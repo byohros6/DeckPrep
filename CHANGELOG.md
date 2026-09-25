@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.1
+
+- Fetches SoundCloud track details through the public oEmbed endpoint instead of running a full extractor for every track.
+- Starts the fast metadata review automatically for SoundCloud playlists and retries transient responses.
+- Shows playlist artwork, title, and creator above the queue.
+- Makes unavailable track lengths explicit when the public metadata does not supply them.
+- Prevents interface labels and playlist artwork from being accidentally selected or dragged while keeping track text copyable.
+
 ## 1.3.0
 
 - Added a metadata-only review step before audio downloads for playlist entries without details.

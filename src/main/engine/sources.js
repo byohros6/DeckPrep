@@ -5,6 +5,7 @@ import { parseBulkText, parseTracklistLine } from './parser.js';
 import { cleanArtist, cleanTitle } from './metadata.js';
 
 const execFileAsync = promisify(execFile);
+const soundCloudMetadataCache = new Map();
 
 export function detectInputType(input) {
   const value = String(input || '').trim();
@@ -44,12 +45,58 @@ export function normalizeTrack(item, source, fallbackUrl, index = 0) {
     album: item.album || '', year: item.year || null,
     artworkUrl: item.thumbnail || item.artworkUrl || null,
     durationSec: Math.round(item.duration || item.durationSec || 0),
-    directUrl: resolvedUrl, source, needsMetadata
+    directUrl: resolvedUrl, source, needsMetadata,
+    soundcloudId: source === 'soundcloud' && item.id ? String(item.id) : undefined
   };
+}
+
+export function normalizeSoundCloudOembed(data, track) {
+  const suffix = data.author_name ? ` by ${data.author_name}` : '';
+  const rawTitle = suffix && data.title?.endsWith(suffix) ? data.title.slice(0, -suffix.length) : data.title;
+  if (!rawTitle) throw new Error('SoundCloud did not provide a track title');
+  const parsed = parseTracklistLine(rawTitle);
+  const artist = parsed?.artist !== 'Unknown Artist' ? parsed.artist : data.author_name || 'Unknown Artist';
+  return {
+    ...track,
+    artist: cleanArtist(artist),
+    title: cleanTitle(parsed?.artist !== 'Unknown Artist' ? parsed.title : rawTitle),
+    mix: parsed?.mix || '',
+    artworkUrl: data.thumbnail_url || track.artworkUrl || null,
+    needsMetadata: false
+  };
+}
+
+async function soundCloudOembed(url, signal) {
+  if (soundCloudMetadataCache.has(url)) return soundCloudMetadataCache.get(url);
+  const endpoint = `https://soundcloud.com/oembed?format=json&url=${encodeURIComponent(url)}`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const timeout = AbortSignal.timeout(10000);
+    let response;
+    try {
+      response = await fetch(endpoint, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+    } catch (err) {
+      if (signal?.aborted || attempt === 2) throw err;
+      await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)));
+      continue;
+    }
+    if (response.ok) {
+      const data = await response.json();
+      soundCloudMetadataCache.set(url, data);
+      return data;
+    }
+    if (response.status === 404) throw new Error('This track is unavailable on SoundCloud');
+    if (response.status !== 429 && response.status < 500) throw new Error(`SoundCloud returned HTTP ${response.status}`);
+    if (attempt === 2) throw new Error(`SoundCloud returned HTTP ${response.status}`);
+    await new Promise(resolve => setTimeout(resolve, 300 * (attempt + 1)));
+  }
 }
 
 export async function fetchTrackDetails(track, signal) {
   if (!track.directUrl) throw new Error('This track has no source link');
+  if (track.source === 'soundcloud' && track.soundcloudId) {
+    const data = await soundCloudOembed(`https://api.soundcloud.com/tracks/${track.soundcloudId}`, signal);
+    return normalizeSoundCloudOembed(data, track);
+  }
   const binary = await resolveBinary('yt-dlp');
   if (!binary) throw new Error('yt-dlp is missing. Run npm run setup:engine.');
   const { stdout } = await execFileAsync(binary, ['--dump-json', '--no-playlist', '--', track.directUrl], {
@@ -79,7 +126,20 @@ async function extractWithYtDlp(url, source) {
     return [normalizeTrack(item, source, url, index + 1)];
   });
   if (!tracks.length) throw new Error('No tracks found at that link');
-  return { title: items[0]?.playlist_title || items[0]?.playlist || (tracks.length === 1 ? tracks[0].title : `${source} collection`), tracks };
+  const result = { title: items[0]?.playlist_title || items[0]?.playlist || (tracks.length === 1 ? tracks[0].title : `${source} collection`), tracks };
+  if (source === 'soundcloud' && items[0]?.playlist_id) {
+    const playlistUrl = items[0].playlist_webpage_url || url;
+    try {
+      const info = await soundCloudOembed(playlistUrl);
+      result.creator = info.author_name || items[0].playlist_uploader || '';
+      result.artworkUrl = info.thumbnail_url || null;
+      result.sourceUrl = playlistUrl;
+    } catch {
+      result.creator = items[0].playlist_uploader || '';
+      result.sourceUrl = playlistUrl;
+    }
+  }
+  return result;
 }
 
 function spotifyTrack(item, albumName, art) {
@@ -112,7 +172,7 @@ async function extractSpotify(url) {
   const items = type === 'track' ? [entity] : entity.trackList || [];
   const tracks = items.map(item => spotifyTrack(item, title, artworkUrl)).filter(track => track.title);
   if (!tracks.length) throw new Error('No tracks found in this Spotify link');
-  return { title, tracks };
+  return { title, tracks, creator: entity.subtitle || entity.owner?.name || '', artworkUrl, sourceUrl: url };
 }
 
 export async function parseInput(input) {

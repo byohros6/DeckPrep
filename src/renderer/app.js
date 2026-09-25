@@ -15,6 +15,7 @@ let destinationDir = '';
 let isDownloading = false;
 let isFetchingDetails = false;
 let isLoadingInput = false;
+let collectionSource = '';
 let metadataProgress = { completed: 0, total: 0 };
 let logCount = 0;
 
@@ -37,6 +38,27 @@ function formatDuration(value) {
   const seconds = Math.round(Number(value) || 0);
   return seconds ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : '—';
 }
+
+function showPlaylistCard(result) {
+  const card = byId('playlistCard');
+  const artwork = byId('playlistArtwork');
+  card.hidden = !result.creator && !result.artworkUrl;
+  byId('playlistName').textContent = result.title || '';
+  byId('playlistName').title = result.title || '';
+  byId('playlistCreator').textContent = result.creator ? `by ${result.creator}` : '';
+  byId('playlistCreator').title = result.creator || '';
+  artwork.hidden = true;
+  artwork.removeAttribute('src');
+  try {
+    const url = new URL(result.artworkUrl);
+    if (url.protocol === 'https:' && (url.hostname.endsWith('.sndcdn.com') || url.hostname === 'i.scdn.co')) {
+      artwork.src = url.href;
+      artwork.hidden = false;
+    }
+  } catch { /* No artwork is available. */ }
+}
+
+byId('playlistArtwork').addEventListener('error', event => { event.target.hidden = true; });
 
 function selectedTracks() { return loadedTracks.filter(track => track.selected); }
 function detailsNeeded() { return selectedTracks().filter(track => track.needsMetadata); }
@@ -89,12 +111,16 @@ function updateMetadataBar() {
   metadataBar.hidden = !needed.length && !isFetchingDetails;
   if (isFetchingDetails) {
     byId('metadataHeadline').textContent = `Fetching details ${metadataProgress.completed} / ${metadataProgress.total}`;
-    byId('metadataMessage').textContent = 'Titles, artists, and durations only. No audio is being downloaded.';
+    byId('metadataMessage').textContent = collectionSource === 'soundcloud'
+      ? 'Reading public SoundCloud titles and artwork. Length appears where available. No audio is downloading.'
+      : 'Titles, artists, and durations only. No audio is being downloaded.';
   } else {
     byId('metadataHeadline').textContent = `${needed.length} selected ${needed.length === 1 ? 'track needs' : 'tracks need'} details`;
     byId('metadataMessage').textContent = failed
       ? `${failed} could not be read. Retry, or uncheck those tracks to continue.`
-      : 'Fetch titles, artists, and durations only. No audio downloads until you review and choose tracks.';
+      : collectionSource === 'soundcloud'
+        ? 'Fetch public track titles and artwork. Length may be unavailable; no audio downloads yet.'
+        : 'Fetch titles, artists, and durations only. No audio downloads until you review and choose tracks.';
   }
   fetchDetailsBtn.hidden = isFetchingDetails;
   fetchDetailsBtn.disabled = isLoadingInput;
@@ -134,15 +160,20 @@ analyzeBtn.addEventListener('click', async () => {
   renderTrackTable();
   updateControls();
   analyzeBtn.textContent = 'Loading tracks...';
+  let autoFetch = false;
   try {
     const result = await window.djAPI.parseInput(rawInput);
     if (!result.success) throw new Error(result.error);
     loadedTracks = result.tracks.map((track, index) => ({ ...track, index: index + 1, selected: true, status: 'pending' }));
+    collectionSource = result.source;
     byId('trackCount').textContent = loadedTracks.length;
-    byId('collectionTitle').textContent = result.title;
+    byId('collectionTitle').textContent = result.source === 'soundcloud' && result.creator
+      ? 'SoundCloud playlist · Length may be unavailable in quick details' : result.title;
+    showPlaylistCard(result);
     renderTrackTable();
     updateControls();
     appendLog(`Loaded ${loadedTracks.length} tracks from ${result.source}.`, 'sys-msg');
+    autoFetch = result.source === 'soundcloud' && loadedTracks.some(track => track.needsMetadata && track.soundcloudId);
   } catch (err) {
     appendLog(`Could not load tracks: ${err.message}`, 'err-msg');
   } finally {
@@ -151,6 +182,7 @@ analyzeBtn.addEventListener('click', async () => {
     analyzeBtn.innerHTML = 'Load tracks <span aria-hidden="true">→</span>';
     renderTrackTable();
     updateControls();
+    if (autoFetch) fetchDetailsBtn.click();
   }
 });
 

@@ -2,7 +2,7 @@
 
 DeckPrep is a Windows desktop app for preparing DJ crates from links and pasted tracklists. Paste a track, album, or playlist link, several links on separate lines, or a list of artist and title lines. Review the queue, choose a destination, and download MP3 files with metadata and artwork.
 
-Some playlists initially provide only links, so their rows may show rough titles or numbered placeholders. Click **Fetch details** to load titles, artists, and durations without downloading audio. You can stop the lookup, retry failed rows, and uncheck tracks you do not want. **Download selected** becomes available once every selected track has details and a destination is chosen. A large playlist may take several minutes to resolve.
+SoundCloud playlists show artwork and creator details, then automatically fill track titles and artists using SoundCloud's public oEmbed metadata. No audio downloads during this review. Track length is shown when available; oEmbed does not provide it for every track. You can stop the lookup, retry failed rows, and uncheck tracks you do not want. **Download selected** becomes available once every selected track has details and a destination is chosen. Other sources still offer **Fetch details** when needed.
 
 Spotify links supply track metadata. DeckPrep finds matching audio from available sources; it does not extract audio from Spotify. Use sources and audio according to their terms and permissions.
 

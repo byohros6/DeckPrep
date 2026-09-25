@@ -51,13 +51,19 @@ function createWindow() {
           }
           if (captureDetailsArg) {
             const selected = Math.max(1, Number(captureDetailsArg.slice('--capture-details='.length)) || 1);
-            await mainWindow.webContents.executeJavaScript(`document.getElementById('selectAll').click(); [...document.querySelectorAll('.track-select')].slice(0, ${selected}).forEach(input => input.click()); document.getElementById('fetchDetailsBtn').click();`);
+            for (let attempt = 0; attempt < 150; attempt++) {
+              const busy = await mainWindow.webContents.executeJavaScript("!document.getElementById('cancelDetailsBtn').hidden");
+              if (!busy) break;
+              await new Promise(resolve => setTimeout(resolve, 300));
+            }
+            await mainWindow.webContents.executeJavaScript(`document.getElementById('selectAll').click(); [...document.querySelectorAll('.track-select')].slice(0, ${selected}).forEach(input => input.click()); if (!document.getElementById('metadataBar').hidden) document.getElementById('fetchDetailsBtn').click();`);
             for (let attempt = 0; attempt < 150; attempt++) {
               await new Promise(resolve => setTimeout(resolve, 300));
               const done = await mainWindow.webContents.executeJavaScript("document.getElementById('metadataBar').hidden && Number(document.getElementById('activityCount').textContent) > 1");
               if (done) break;
             }
           }
+          await new Promise(resolve => setTimeout(resolve, 400));
         }
         const fs = await import('node:fs/promises');
         const image = await mainWindow.webContents.capturePage();

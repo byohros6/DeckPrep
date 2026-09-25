@@ -87,7 +87,8 @@ export function registerIpcHandlers(mainWindow) {
         send('metadata-progress', { track, completed: job.completed, total: job.total, errors: job.errors });
       }
     };
-    Promise.all(Array.from({ length: Math.min(4, tracks.length) }, worker)).finally(() => {
+    const workers = tracks.every(track => track.source === 'soundcloud' && track.soundcloudId) ? 8 : 4;
+    Promise.all(Array.from({ length: Math.min(workers, tracks.length) }, worker)).finally(() => {
       if (activeMetadata === job) activeMetadata = null;
       send('metadata-completed', { completed: job.completed, total: job.total, errors: job.errors, cancelled: job.controller.signal.aborted });
     });

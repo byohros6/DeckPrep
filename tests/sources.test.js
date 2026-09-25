@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { detectInputType, sanitizeUrl, parseInput, normalizeTrack } from '../src/main/engine/sources.js';
+import { detectInputType, sanitizeUrl, parseInput, normalizeTrack, normalizeSoundCloudOembed } from '../src/main/engine/sources.js';
 import { buildSearchQuery } from '../src/main/engine/resolver.js';
 import { checkBinaries } from '../src/main/engine/binaryManager.js';
 
@@ -49,6 +49,17 @@ test('SoundCloud playlist entries without titles stay in the queue and resolve t
   assert.equal(resolved.needsMetadata, false);
   assert.equal(resolved.title, 'Break Down (Dennis Cruz Remix)');
   assert.equal(resolved.durationSec, 342);
+});
+
+test('SoundCloud public embed metadata becomes a reviewable track', () => {
+  const track = { index: 6, source: 'soundcloud', soundcloudId: '1576004935', directUrl: 'https://api-v2.soundcloud.com/tracks/1576004935', needsMetadata: true, durationSec: 0 };
+  const result = normalizeSoundCloudOembed({ title: 'Kamino - Lower Frequency (Original Mix) by Andhera Records', author_name: 'Andhera Records', thumbnail_url: 'https://i1.sndcdn.com/artwork.jpg' }, track);
+  assert.equal(result.artist, 'Kamino');
+  assert.equal(result.title, 'Lower Frequency (Original Mix)');
+  assert.equal(result.mix, 'Original Mix');
+  assert.equal(result.needsMetadata, false);
+  assert.equal(result.durationSec, 0);
+  assert.equal(result.soundcloudId, '1576004935');
 });
 
 test('download and transcoding engines are present', async () => {

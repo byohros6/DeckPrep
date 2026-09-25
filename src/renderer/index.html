@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.sndcdn.com https://i.scdn.co">
   <title>DeckPrep</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -36,7 +36,7 @@
       </aside>
 
       <main class="main-panel">
-        <div class="queue-toolbar"><div><h1>Track queue <span id="trackCount">0</span></h1><p id="collectionTitle">Load a link or tracklist to begin</p></div><span id="selectedCount" class="selected-count">0 selected</span></div>
+        <div class="queue-toolbar"><div class="queue-heading"><h1>Track queue <span id="trackCount">0</span></h1><p id="collectionTitle">Load a link or tracklist to begin</p></div><div class="queue-heading-right"><div id="playlistCard" class="playlist-card" hidden><img id="playlistArtwork" alt="Playlist artwork" draggable="false" hidden><div><strong id="playlistName"></strong><span id="playlistCreator"></span></div></div><span id="selectedCount" class="selected-count">0 selected</span></div></div>
         <div id="metadataBar" class="metadata-bar" hidden><div><strong id="metadataHeadline">Track details needed</strong><span id="metadataMessage">Get titles, artists, and durations before downloading. This does not download audio.</span></div><div class="metadata-actions"><button id="cancelDetailsBtn" class="button button-secondary" hidden>Stop</button><button id="fetchDetailsBtn" class="button button-primary">Fetch details</button></div></div>
         <div class="table-scroll"><table class="track-table"><thead><tr><th class="select-col"><input id="selectAll" type="checkbox" aria-label="Select all tracks" disabled></th><th class="number-col">#</th><th>Track</th><th>Artist</th><th>Mix / edit</th><th class="duration-col">Time</th><th class="status-col">Status</th></tr></thead><tbody id="trackTableBody"><tr class="empty-row"><td colspan="7"><div class="empty-state"><strong>Nothing in the queue</strong><span>Paste links or a tracklist on the left, then load tracks.</span></div></td></tr></tbody></table></div>
         <details class="activity" id="activityPanel"><summary>Activity <span id="activityCount">0</span></summary><div class="activity-inner"><div id="logConsole" class="log-console" role="log" aria-live="polite"></div><button id="clearLogBtn" class="text-button">Clear activity</button></div></details>

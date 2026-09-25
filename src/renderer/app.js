@@ -27,6 +27,39 @@ let activeDetailIndex = null;
 let sessionSaveTimer = null;
 let sessionPromptOpen = false;
 let logCount = 0;
+let cpuCores = 4;
+
+function presetConcurrency(mode) {
+  if (mode === 'gentle') return Math.min(2, Math.max(1, Math.floor(cpuCores / 4)));
+  if (mode === 'fast') return Math.min(8, Math.max(4, Math.floor(cpuCores / 2)));
+  return Math.min(4, Math.max(2, Math.floor(cpuCores / 3)));
+}
+
+function updateSpeed(mode = byId('speedMode').value) {
+  if (mode !== 'custom') byId('concurrencyRange').value = String(presetConcurrency(mode));
+  const count = Math.max(1, Math.min(12, Number(byId('concurrencyRange').value) || 1));
+  byId('concurrencyRange').value = String(count);
+  byId('concurrencyVal').textContent = String(count);
+  byId('speedHint').textContent = mode === 'gentle'
+    ? `${count} ${count === 1 ? 'track' : 'tracks'} at once. Uses fewer computer resources.`
+    : mode === 'fast' ? `${count} tracks at once. Faster on a capable computer, with more resource use.`
+      : mode === 'custom' ? `${count} ${count === 1 ? 'track' : 'tracks'} at once. Set in Advanced settings.`
+        : `${count} tracks at once, chosen for this computer.`;
+}
+
+function updateCrateHint() {
+  const mode = byId('crateMode').value;
+  byId('crateModeHint').textContent = mode === 'sampler'
+    ? 'Creates a DJ Sampler Bank subfolder. These are full tracks; no pads or cue points are made.'
+    : mode === 'partitioned' ? 'Creates a folder for each genre, or artist when genre is unknown.'
+      : 'Keeps all exported tracks in one folder.';
+}
+
+function setRestoreDialogOpen(open) {
+  byId('restoreDialog').hidden = !open;
+  document.querySelector('.app').inert = open;
+  if (open) byId('resumeSessionBtn').focus();
+}
 
 function appendLog(message, className = '') {
   const entry = document.createElement('div');
@@ -57,7 +90,7 @@ function saveQueueSoon(delay = 400) {
     window.djAPI.saveSession({
       input: inputSource.value, source: collectionSource, collection: collectionInfo,
       tracks: loadedTracks, destinationDir, mode: byId('crateMode').value,
-      concurrency: Number(byId('concurrencyRange').value),
+      concurrency: Number(byId('concurrencyRange').value), performanceMode: byId('speedMode').value,
       phase: isDownloading ? 'downloading' : complete ? 'completed' : 'review'
     }).catch(err => appendLog(`Could not save session: ${err.message}`, 'err-msg'));
   }, delay);
@@ -71,8 +104,8 @@ function showPlaylistCard(result) {
   byId('playlistName').title = result.title || '';
   byId('playlistCreator').textContent = result.creator ? `by ${result.creator}` : '';
   byId('playlistCreator').title = result.creator || '';
-  byId('playlistOpenBtn').hidden = !result.sourceUrl;
-  byId('playlistOpenBtn').dataset.url = result.sourceUrl || '';
+  card.disabled = !result.sourceUrl;
+  card.dataset.url = result.sourceUrl || '';
   artwork.hidden = true;
   artwork.removeAttribute('src');
   try {
@@ -95,11 +128,24 @@ function collectionSubtitle(result) {
 function showSourceWarning(message) {
   const warning = byId('sourceWarning');
   warning.hidden = !message;
-  warning.textContent = message || '';
+  warning.replaceChildren();
+  if (!message) return;
+  const text = document.createElement('span');
+  text.textContent = message;
+  warning.appendChild(text);
+  if (collectionSource === 'spotify') {
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'source-warning-action';
+    action.textContent = 'Paste full tracklist →';
+    action.addEventListener('click', () => { inputSource.focus(); inputSource.select(); });
+    warning.appendChild(action);
+  }
 }
 
 byId('playlistArtwork').addEventListener('error', event => { event.target.hidden = true; });
-byId('playlistOpenBtn').addEventListener('click', () => window.djAPI.openSourceLink(byId('playlistOpenBtn').dataset.url));
+byId('restoreArtwork').addEventListener('error', event => { event.target.hidden = true; });
+byId('playlistCard').addEventListener('click', () => window.djAPI.openSourceLink(byId('playlistCard').dataset.url));
 
 function selectedTracks() { return loadedTracks.filter(track => track.selected); }
 function pendingTracks() { return selectedTracks().filter(track => !['done', 'skipped'].includes(track.status)); }
@@ -120,7 +166,7 @@ function visibleTracks() {
 }
 
 function displayStatus(track) {
-  if (!track.selected && !isDownloading) return 'Excluded';
+  if (!track.selected && !isDownloading) return 'Not selected';
   if (track.status === 'error') return 'Failed';
   if (track.status === 'done') return 'Downloaded';
   if (track.status === 'skipped') return 'Already exists';
@@ -169,7 +215,7 @@ function renderTrackTable() {
       <td>${escapeHtml(track.mix || '—')}</td>
       <td>${formatDuration(track.durationSec)}</td>
       <td><span class="status-chip ${statusClass(track)}" title="${escapeHtml(track.errorMessage || track.metadataError || track.matchError || '')}">${escapeHtml(displayStatus(track))}</span></td>
-    </tr>`).join('') : `<tr class="empty-row"><td colspan="7"><div class="empty-state"><strong>${loadedTracks.length ? 'No matching tracks' : 'Nothing in the queue'}</strong><span>${loadedTracks.length ? 'Change the search or filter to see more.' : 'Paste links or a tracklist on the left, then load tracks.'}</span></div></td></tr>`;
+    </tr>`).join('') : `<tr class="empty-row"><td colspan="7"><div class="empty-state">${isLoadingInput ? '<span class="loading-spinner" aria-hidden="true"></span>' : ''}<strong>${isLoadingInput ? 'Reading your link' : loadedTracks.length ? 'No matching tracks' : 'Nothing in the queue'}</strong><span>${isLoadingInput ? 'Connecting to the source and collecting track details.' : loadedTracks.length ? 'Change the search or filter to see more.' : 'Paste links or a tracklist on the left, then load tracks.'}</span></div></td></tr>`;
 }
 
 function updateMetadataBar() {
@@ -233,10 +279,12 @@ function updateControls() {
   const unresolved = matchesNeeded();
   const visible = visibleTracks();
   byId('selectedCount').textContent = `${selected.length} selected`;
+  byId('selectionNotice').hidden = !loadedTracks.length || !!selected.length || isLoadingInput;
   selectAll.disabled = !visible.length || isDownloading || isFetchingDetails || isFindingMatches || isLoadingInput;
   selectAll.checked = !!visible.length && visible.every(track => track.selected);
   selectAll.indeterminate = visible.some(track => track.selected) && !selectAll.checked;
-  byId('selectVisibleBtn').disabled = selectAll.disabled;
+  byId('selectVisibleBtn').disabled = selectAll.disabled || visible.every(track => track.selected);
+  byId('selectVisibleBtn').textContent = visible.length ? `Select shown (${visible.length})` : 'Select shown';
   byId('clearSelectionBtn').disabled = !selected.length || isDownloading || isFetchingDetails || isFindingMatches || isLoadingInput;
   startBtn.disabled = isLoadingInput || isDownloading || isFetchingDetails || isFindingMatches || !pending.length || !!needed.length || !!unresolved.length || !destinationDir;
   startBtn.title = needed.length ? 'Fetch details for selected tracks first' : unresolved.length ? 'Review selected audio matches first' : !destinationDir ? 'Choose a destination folder' : !pending.length ? 'All selected tracks are complete' : '';
@@ -349,9 +397,11 @@ analyzeBtn.addEventListener('click', async () => {
   if (!rawInput) { appendLog('Paste a link or tracklist first.', 'err-msg'); return; }
   analyzeBtn.disabled = true;
   isLoadingInput = true;
+  analyzeBtn.textContent = 'Reading link…';
+  byId('loadingNotice').hidden = false;
   renderTrackTable();
   updateControls();
-  analyzeBtn.textContent = 'Loading tracks...';
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   let autoFetch = false;
   try {
     const result = await window.djAPI.parseInput(rawInput);
@@ -380,6 +430,7 @@ analyzeBtn.addEventListener('click', async () => {
     byId('sourceHint').classList.add('error');
   } finally {
     isLoadingInput = false;
+    byId('loadingNotice').hidden = true;
     analyzeBtn.disabled = false;
     analyzeBtn.innerHTML = 'Load tracks <span aria-hidden="true">→</span>';
     renderTrackTable();
@@ -505,8 +556,9 @@ byId('browseBtn').addEventListener('click', async () => {
 });
 byId('openFolderBtn').addEventListener('click', () => window.djAPI.openFolder(destinationDir));
 byId('clearLogBtn').addEventListener('click', () => { logConsole.textContent = ''; logCount = 0; byId('activityCount').textContent = '0'; });
-byId('concurrencyRange').addEventListener('input', event => { byId('concurrencyVal').textContent = event.target.value; saveQueueSoon(); });
-byId('crateMode').addEventListener('change', saveQueueSoon);
+byId('concurrencyRange').addEventListener('input', () => { byId('speedMode').value = 'custom'; updateSpeed(); saveQueueSoon(); });
+byId('speedMode').addEventListener('change', () => { updateSpeed(); saveQueueSoon(); });
+byId('crateMode').addEventListener('change', () => { updateCrateHint(); saveQueueSoon(); });
 byId('retryFailedBtn').addEventListener('click', () => {
   const failed = loadedTracks.filter(track => track.status === 'error');
   loadedTracks.forEach(track => { track.selected = failed.includes(track); });
@@ -528,7 +580,7 @@ startBtn.addEventListener('click', async () => {
   try {
     const result = await window.djAPI.startDownload({
       destinationDir, selectedIndices: pendingTracks().map(track => track.index),
-      concurrency: Number(byId('concurrencyRange').value), mode: byId('crateMode').value
+      concurrency: Math.max(1, Math.min(12, Number(byId('concurrencyRange').value) || 1)), mode: byId('crateMode').value
     });
     if (!result.success) throw new Error(result.error);
   } catch (err) {
@@ -585,17 +637,19 @@ byId('resumeSessionBtn').addEventListener('click', async () => {
     byId('destPath').value = destinationDir;
     byId('openFolderBtn').disabled = !destinationDir;
     if ([...byId('crateMode').options].some(option => option.value === session.mode)) byId('crateMode').value = session.mode;
+    updateCrateHint();
     const workers = Number(session.concurrency);
     if (Number.isInteger(workers) && workers >= 1 && workers <= 32) {
-      byId('concurrencyRange').value = String(workers);
-      byId('concurrencyVal').textContent = String(workers);
+      byId('concurrencyRange').value = String(Math.min(12, workers));
     }
+    byId('speedMode').value = ['gentle', 'balanced', 'fast', 'custom'].includes(session.performanceMode) ? session.performanceMode : 'custom';
+    updateSpeed();
     byId('trackCount').textContent = loadedTracks.length;
     byId('collectionTitle').textContent = collectionSubtitle({ ...collectionInfo, source: collectionSource });
     showPlaylistCard(collectionInfo);
     showSourceWarning(collectionInfo.warning);
     sessionPromptOpen = false;
-    byId('restoreDialog').hidden = true;
+    setRestoreDialogOpen(false);
     renderTrackTable(); updateControls(); saveQueueSoon();
     appendLog(`Restored ${loadedTracks.length} tracks. Review and click Download selected when ready.`, 'sys-msg');
   } catch (err) {
@@ -607,7 +661,7 @@ byId('discardSessionBtn').addEventListener('click', async () => {
   try {
     await window.djAPI.clearSession();
     sessionPromptOpen = false;
-    byId('restoreDialog').hidden = true;
+    setRestoreDialogOpen(false);
     inputSource.focus();
   } catch (err) { appendLog(`Could not discard session: ${err.message}`, 'err-msg'); }
 });
@@ -617,25 +671,36 @@ byId('discardSessionBtn').addEventListener('click', async () => {
     byId('appVersion').textContent = `v${await window.djAPI.getAppVersion()}`;
     const status = await window.djAPI.checkBinaries();
     const ready = status.ffmpeg?.found && status.ytDlp?.found;
-    byId('binaryStatus').textContent = ready ? 'Tools ready' : 'Tools missing';
-    byId('binaryStatus').className = `engine-status ${ready ? 'ready' : 'missing'}`;
+    byId('binaryStatus').hidden = ready;
+    byId('binaryStatus').textContent = 'Setup needed';
+    byId('binaryStatus').className = 'engine-status missing';
+    if (!ready) appendLog('Audio engine is unavailable. Check the setup instructions before exporting.', 'err-msg');
     const info = await window.djAPI.getSystemInfo();
-    const workers = Math.max(1, info.defaultConcurrency || 2);
-    byId('concurrencyRange').max = String(Math.max(32, workers));
-    byId('concurrencyRange').value = String(workers);
-    byId('concurrencyVal').textContent = String(workers);
+    cpuCores = Math.max(1, Number(info.cpuCores) || 4);
+    byId('concurrencyRange').max = '12';
+    updateSpeed();
+    updateCrateHint();
     try {
       const saved = await window.djAPI.getSavedSession();
       if (saved?.tracks?.length && saved.phase !== 'completed') {
         sessionPromptOpen = true;
-        const when = saved.savedAt ? new Date(saved.savedAt).toLocaleString() : 'your last session';
-        byId('restoreDescription').textContent = `${saved.tracks.length} tracks from ${when}. Restore the queue and progress, or start over. Downloads will wait for you.`;
-        byId('restoreDialog').hidden = false;
-        byId('resumeSessionBtn').focus();
+        const selected = saved.tracks.filter(track => track.selected).length;
+        const completed = saved.tracks.filter(track => ['done', 'skipped'].includes(track.status)).length;
+        byId('restoreName').textContent = saved.collection?.title || 'Previous queue';
+        byId('restoreDescription').textContent = `${saved.tracks.length} tracks${saved.collection?.creator ? ` · by ${saved.collection.creator}` : ''}`;
+        byId('restoreSelected').textContent = String(selected);
+        byId('restoreCompleted').textContent = `${completed} / ${selected}`;
+        byId('restoreWhen').textContent = saved.savedAt ? new Date(saved.savedAt).toLocaleString() : 'Earlier';
+        byId('restoreDestination').textContent = saved.destinationDir ? `Destination: ${saved.destinationDir}` : 'Choose a destination after restoring.';
+        const savedArt = saved.collection?.artworkUrl || '';
+        byId('restoreArtwork').hidden = !/^https:\/\/(?:[^/]+\.)?(?:sndcdn\.com|mzstatic\.com)\//i.test(savedArt) && !/^https:\/\/i\.(?:scdn\.co|ytimg\.com)\//i.test(savedArt);
+        if (!byId('restoreArtwork').hidden) byId('restoreArtwork').src = savedArt;
+        setRestoreDialogOpen(true);
       }
     } catch (err) { appendLog(`Saved session unavailable: ${err.message}`, 'err-msg'); }
   } catch (err) {
-    byId('binaryStatus').textContent = 'Tool error';
+    byId('binaryStatus').hidden = false;
+    byId('binaryStatus').textContent = 'Setup needed';
     byId('binaryStatus').className = 'engine-status missing';
     appendLog(err.message, 'err-msg');
   }

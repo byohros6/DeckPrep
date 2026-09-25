@@ -156,14 +156,16 @@ async function extractWithYtDlp(url, source) {
 function spotifyTrack(item, albumName, art) {
   const track = item.track || item;
   const id = track.uri?.split(':').at(-1);
+  const rawTitle = track.title || track.name || '';
+  const dashVersion = rawTitle.match(/\s[-–—]\s+([^–—-]*(?:remix|mix|edit|rework|version|dub|vip|bootleg))$/i);
   return {
-    title: track.title || track.name,
+    title: dashVersion ? rawTitle.slice(0, dashVersion.index).trim() : rawTitle,
     artist: track.subtitle || track.artists?.map(artist => artist.name).join(', ') || 'Unknown Artist',
     album: track.album?.title || track.album?.name || albumName || '',
     artworkUrl: track.coverArt?.sources?.[0]?.url || track.album?.images?.[0]?.url || art || null,
     durationSec: Math.round((track.duration_ms || track.duration || 0) / 1000),
     year: track.album?.release_date ? Number(track.album.release_date.slice(0, 4)) : null,
-    mix: parseTracklistLine(track.title || track.name || '')?.mix || '',
+    mix: dashVersion?.[1]?.trim() || parseTracklistLine(rawTitle)?.mix || '',
     source: 'spotify', sourceUrl: id ? `https://open.spotify.com/track/${id}` : null,
     needsMetadata: false
   };
@@ -173,7 +175,7 @@ async function extractSpotify(url) {
   const match = url.match(/spotify\.com\/(?:intl-[a-z]{2}\/)?(track|album|playlist)\/([a-zA-Z0-9]+)/i);
   if (!match) throw new Error('Invalid Spotify link');
   const [, type, id] = match;
-  const embed = await fetch(`https://open.spotify.com/embed/${type}/${id}`);
+  const embed = await fetch(`https://open.spotify.com/embed/${type}/${id}`, { signal: AbortSignal.timeout(20000) });
   if (!embed.ok) throw new Error(`Spotify returned HTTP ${embed.status}`);
   const html = await embed.text();
   const jsonText = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/)?.[1];
@@ -186,7 +188,7 @@ async function extractSpotify(url) {
   const tracks = items.map(item => spotifyTrack(item, title, artworkUrl)).filter(track => track.title);
   if (!tracks.length) throw new Error('No tracks found in this Spotify link');
   return { title, tracks, creator: entity.subtitle || entity.owner?.name || '', artworkUrl, sourceUrl: url,
-    warning: type === 'playlist' && tracks.length >= 100 ? 'Spotify exposed 100 tracks; the full playlist length could not be verified.' : '' };
+    warning: type === 'playlist' ? `Spotify's public preview returned ${tracks.length} tracks. The full playlist length is unavailable here; compare with Spotify and paste a complete tracklist if tracks are missing.` : '' };
 }
 
 export async function parseInput(input) {

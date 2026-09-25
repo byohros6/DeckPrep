@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0-beta.2
+
+- Reworked the saved-session prompt with playlist details, selection and completion counts, and a clearer review action.
+- Made loading visible immediately, removed the redundant success badge, and improved queue selection controls and playlist card affordance.
+- Added processing-speed presets with an advanced exact track-count setting; clarified what the sampler folder does.
+- Made Spotify public-preview limits explicit for every playlist and separated dash-form remix names into the Mix/Edit column.
+
 ## 1.4.0-beta.1
 
 - Added public Apple Music playlist, album, and song import and clearer source details for all four core platforms.

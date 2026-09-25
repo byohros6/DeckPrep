@@ -40,6 +40,26 @@ test('multiple links load into one queue', async () => {
   }
 });
 
+test('Spotify preview keeps remix details and reports unverified playlist length', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    const entity = { title: 'Set', subtitle: 'A DJ', trackList: [
+      { title: 'Brighter Days - Marco Lys Remix', subtitle: 'Cajmere, Dajae', duration: 383000, uri: 'spotify:track:abc' }
+    ] };
+    const data = { props: { pageProps: { state: { data: { entity } } } } };
+    return { ok: true, text: async () => `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(data)}</script>` };
+  };
+  try {
+    const result = await parseInput('https://open.spotify.com/playlist/example');
+    assert.equal(result.tracks[0].title, 'Brighter Days');
+    assert.equal(result.tracks[0].mix, 'Marco Lys Remix');
+    assert.equal(result.tracks[0].durationSec, 383);
+    assert.match(result.warning, /full playlist length is unavailable/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('SoundCloud playlist entries without titles stay in the queue and resolve to full metadata', () => {
   const url = 'https://soundcloud.com/moanrecordings/hector-couto-rendher-break-down-dennis-cruz-remix';
   const pending = normalizeTrack({ url, playlist_title: 'Deep tech/minimal/tech house extended' }, 'soundcloud', url, 1);

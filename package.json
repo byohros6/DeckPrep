@@ -1,0 +1,62 @@
+{
+  "name": "deckprep",
+  "version": "1.1.0",
+  "description": "Link-based DJ audio downloads and crate preparation for authorized use",
+  "main": "src/main/main.js",
+  "type": "module",
+  "scripts": {
+    "start": "electron .",
+    "setup:engine": "node tools/setup-engine.js",
+    "test": "node --test tests/*.test.js",
+    "dist": "electron-builder --win",
+    "dist:portable": "electron-builder --win portable"
+  },
+  "keywords": [
+    "dj",
+    "audio-library",
+    "id3v2",
+    "metadata",
+    "music-links",
+    "batch-download"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ffmpeg-static": "^5.3.0",
+    "node-id3": "^0.2.6"
+  },
+  "devDependencies": {
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "app.deckprep.desktop",
+    "productName": "DeckPrep",
+    "electronDist": "node_modules/electron/dist",
+    "compression": "normal",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "portable"
+      ]
+    },
+    "portable": {
+      "artifactName": "DeckPrep-Portable-${version}.${ext}",
+      "unpackDirName": "DeckPrep-Portable"
+    },
+    "forceCodeSigning": false,
+    "extraResources": [
+      {
+        "from": "bin/yt-dlp.exe",
+        "to": "bin/yt-dlp.exe"
+      }
+    ],
+    "files": [
+      "src/**/*",
+      "package.json",
+      "README.md"
+    ]
+  }
+}

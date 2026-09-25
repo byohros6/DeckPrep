@@ -32,7 +32,7 @@ test('an audio URL downloads, transcodes, tags, and keeps source intact', async 
     const url = `http://127.0.0.1:${server.address().port}/source.mp3`;
     const summary = await new Promise(resolve => {
       const queue = new DownloadQueue({ destinationDir: output, concurrency: 1, onAllCompleted: resolve });
-      queue.load([{ artist: 'Test Artist', title: 'Test Track', durationSec: 0, directUrl: url }]);
+      queue.load([{ index: 7, artist: 'Test Artist', title: 'Test Track', durationSec: 0, directUrl: url }]);
       queue.start();
     });
     assert.equal(summary.completed, 1);
@@ -40,6 +40,7 @@ test('an audio URL downloads, transcodes, tags, and keeps source intact', async 
     assert.deepEqual(fs.readFileSync(source), original);
     const exported = fs.readdirSync(output).filter(name => name.endsWith('.mp3'));
     assert.equal(exported.length, 1);
+    assert.match(exported[0], /^007\./);
     const tags = NodeID3.read(path.join(output, exported[0]));
     assert.equal(tags.artist, 'Test Artist');
     assert.equal(tags.title, 'Test Track');

@@ -36,13 +36,14 @@
       </aside>
 
       <main class="main-panel">
-        <div class="queue-toolbar"><div><h1>Track queue <span id="trackCount">0</span></h1><p id="collectionTitle">Load a link or tracklist to begin</p></div><span class="format-note">MP3 EXPORT</span></div>
-        <div class="table-scroll"><table class="track-table"><thead><tr><th class="number-col">#</th><th>Track</th><th>Artist</th><th>Mix / edit</th><th class="duration-col">Time</th><th class="status-col">Status</th></tr></thead><tbody id="trackTableBody"><tr class="empty-row"><td colspan="6"><div class="empty-state"><strong>Nothing in the queue</strong><span>Paste links or a tracklist on the left, then load tracks.</span></div></td></tr></tbody></table></div>
+        <div class="queue-toolbar"><div><h1>Track queue <span id="trackCount">0</span></h1><p id="collectionTitle">Load a link or tracklist to begin</p></div><span id="selectedCount" class="selected-count">0 selected</span></div>
+        <div id="metadataBar" class="metadata-bar" hidden><div><strong id="metadataHeadline">Track details needed</strong><span id="metadataMessage">Get titles, artists, and durations before downloading. This does not download audio.</span></div><div class="metadata-actions"><button id="cancelDetailsBtn" class="button button-secondary" hidden>Stop</button><button id="fetchDetailsBtn" class="button button-primary">Fetch details</button></div></div>
+        <div class="table-scroll"><table class="track-table"><thead><tr><th class="select-col"><input id="selectAll" type="checkbox" aria-label="Select all tracks" disabled></th><th class="number-col">#</th><th>Track</th><th>Artist</th><th>Mix / edit</th><th class="duration-col">Time</th><th class="status-col">Status</th></tr></thead><tbody id="trackTableBody"><tr class="empty-row"><td colspan="7"><div class="empty-state"><strong>Nothing in the queue</strong><span>Paste links or a tracklist on the left, then load tracks.</span></div></td></tr></tbody></table></div>
         <details class="activity" id="activityPanel"><summary>Activity <span id="activityCount">0</span></summary><div class="activity-inner"><div id="logConsole" class="log-console" role="log" aria-live="polite"></div><button id="clearLogBtn" class="text-button">Clear activity</button></div></details>
       </main>
     </div>
 
-    <footer class="footer"><div class="progress-block"><div class="progress-track"><div id="globalProgressBar" class="progress-fill"></div></div><div class="progress-label"><span id="progressStats">0 / 0 completed</span><span id="percentText">0%</span></div></div><div class="footer-actions"><button id="openFolderBtn" class="button button-secondary" disabled>Open folder</button><button id="cancelBtn" class="button button-secondary" disabled>Cancel</button><button id="startBtn" class="button button-primary" disabled>Download tracks <span aria-hidden="true">↓</span></button></div></footer>
+    <footer class="footer"><div class="progress-block"><div class="progress-track"><div id="globalProgressBar" class="progress-fill"></div></div><div class="progress-label"><span id="progressStats">0 / 0 completed</span><span id="percentText">0%</span></div></div><div class="footer-actions"><button id="openFolderBtn" class="button button-secondary" disabled>Open folder</button><button id="cancelBtn" class="button button-secondary" disabled>Cancel</button><button id="startBtn" class="button button-primary" disabled>Download selected <span aria-hidden="true">↓</span></button></div></footer>
   </div>
   <script src="app.js"></script>
 </body>

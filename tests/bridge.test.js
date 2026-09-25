@@ -5,6 +5,8 @@ import fs from 'node:fs';
 test('renderer bridge exposes link analysis and batch downloads', () => {
   const bridge = fs.readFileSync(new URL('../src/preload/preload.cjs', import.meta.url), 'utf8');
   assert.match(bridge, /parseInput/);
+  assert.match(bridge, /fetchMetadata/);
+  assert.match(bridge, /cancelMetadata/);
   assert.match(bridge, /startDownload/);
   assert.match(bridge, /cancelDownload/);
 });

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0
+
+- Added a metadata-only review step before audio downloads for playlist entries without details.
+- Added per-track selection, select all, retry for failed details, and cancellable lookup progress.
+- Downloads only selected tracks and keeps original playlist numbering in filenames.
+
 ## 1.2.1
 
 - Fixed SoundCloud playlists whose fast listing omits track titles.

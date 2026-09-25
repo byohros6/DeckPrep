@@ -48,6 +48,22 @@ export function normalizeTrack(item, source, fallbackUrl, index = 0) {
   };
 }
 
+export async function fetchTrackDetails(track, signal) {
+  if (!track.directUrl) throw new Error('This track has no source link');
+  const binary = await resolveBinary('yt-dlp');
+  if (!binary) throw new Error('yt-dlp is missing. Run npm run setup:engine.');
+  const { stdout } = await execFileAsync(binary, ['--dump-json', '--no-playlist', '--', track.directUrl], {
+    maxBuffer: 10 * 1024 * 1024, signal
+  });
+  const item = stdout.split(/\r?\n/).filter(Boolean).map(line => {
+    try { return JSON.parse(line); } catch { return null; }
+  }).find(value => value?.title);
+  if (!item) throw new Error('Track details were unavailable');
+  const details = normalizeTrack(item, track.source, track.directUrl, track.index);
+  if (!details.album) details.album = track.album;
+  return details;
+}
+
 async function extractWithYtDlp(url, source) {
   const binary = await resolveBinary('yt-dlp');
   if (!binary) throw new Error('yt-dlp is missing. Run npm run setup:engine.');

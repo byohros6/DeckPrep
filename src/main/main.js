@@ -11,6 +11,8 @@ let mainWindow = null;
 function createWindow() {
   const isSmokeTest = process.argv.includes('--smoke-test');
   const captureArg = process.argv.find(arg => arg.startsWith('--capture-ui='));
+  const captureSourceArg = process.argv.find(arg => arg.startsWith('--capture-source='));
+  const captureDetailsArg = process.argv.find(arg => arg.startsWith('--capture-details='));
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -38,6 +40,25 @@ function createWindow() {
     mainWindow.webContents.on('did-finish-load', async () => {
       try {
         await new Promise(resolve => setTimeout(resolve, 900));
+        if (captureSourceArg) {
+          const source = captureSourceArg.slice('--capture-source='.length);
+          await mainWindow.webContents.executeJavaScript(`document.getElementById('inputSource').value = ${JSON.stringify(source)}; document.getElementById('analyzeBtn').click();`);
+          for (let attempt = 0; attempt < 150; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+            const count = await mainWindow.webContents.executeJavaScript("Number(document.getElementById('trackCount').textContent)");
+            const errors = await mainWindow.webContents.executeJavaScript("Number(document.getElementById('activityCount').textContent)");
+            if (count > 0 || errors > 0) break;
+          }
+          if (captureDetailsArg) {
+            const selected = Math.max(1, Number(captureDetailsArg.slice('--capture-details='.length)) || 1);
+            await mainWindow.webContents.executeJavaScript(`document.getElementById('selectAll').click(); [...document.querySelectorAll('.track-select')].slice(0, ${selected}).forEach(input => input.click()); document.getElementById('fetchDetailsBtn').click();`);
+            for (let attempt = 0; attempt < 150; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 300));
+              const done = await mainWindow.webContents.executeJavaScript("document.getElementById('metadataBar').hidden && Number(document.getElementById('activityCount').textContent) > 1");
+              if (done) break;
+            }
+          }
+        }
         const fs = await import('node:fs/promises');
         const image = await mainWindow.webContents.capturePage();
         await fs.writeFile(captureArg.slice('--capture-ui='.length), image.toPNG());

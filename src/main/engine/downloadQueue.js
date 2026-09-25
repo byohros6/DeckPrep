@@ -30,7 +30,7 @@ export class DownloadQueue {
   }
 
   load(tracks) {
-    this.tracks = tracks.map((track, index) => ({ ...track, index: index + 1, status: 'pending' }));
+    this.tracks = tracks.map((track, index) => ({ ...track, index: track.index || index + 1, status: 'pending' }));
     this.nextIndex = 0;
   }
 

@@ -55,7 +55,6 @@ export function registerIpcHandlers(mainWindow) {
   });
   ipcMain.handle('start-download', async (_, options) => {
     if (activeQueue) return { success: false, error: 'A batch is already running' };
-    if (!options?.authorized) return { success: false, error: 'Confirm you have permission to download these files' };
     if (!parsedTracks.length) return { success: false, error: 'Analyze a link or tracklist first' };
     if (options.destinationDir !== selectedDestination || !fs.existsSync(selectedDestination)) {
       return { success: false, error: 'Choose a destination folder' };

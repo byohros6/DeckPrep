@@ -1,157 +1,49 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:">
-  <title>DeckPrep — DJ Library Preparation</title>
+  <title>DeckPrep</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="app-container">
-    <!-- Top Header -->
-    <header class="app-header">
-      <div class="brand">
-        <div class="brand-logo">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-          </svg>
-        </div>
-        <div>
-          <h1>DECKPREP</h1>
-          <span class="sub-text">Link to crate, with metadata and format prep · <span id="appVersion">v1.1.0</span></span>
-        </div>
-      </div>
-      <div class="engine-status">
-        <span id="binaryStatus" class="status-badge checking">Checking Engines...</span>
-      </div>
+  <div class="app">
+    <header class="topbar">
+      <div class="identity"><span class="mark" aria-hidden="true"><span></span></span><strong>DeckPrep</strong><span class="version" id="appVersion"></span></div>
+      <span id="binaryStatus" class="engine-status checking">Checking tools</span>
     </header>
 
-    <!-- Main Workspace -->
-    <main class="main-content">
-      <!-- Input Section -->
-      <section class="card input-section">
-        <div class="section-header">
-          <h2>1. Add links or a tracklist</h2>
-          <span class="badge-accent">Spotify • SoundCloud • YouTube • Pasted tracklists</span>
-        </div>
-        <div class="input-group">
-          <textarea id="inputSource" rows="3" placeholder="Paste a music link or a tracklist, e.g. Artist - Title (Extended Mix)"></textarea>
-          <button id="analyzeBtn" class="btn-primary">Analyze & Load</button>
-        </div>
-        <label class="rights-check"><input id="rightsConfirmed" type="checkbox"> I have permission to download and make copies of this audio.</label>
-      </section>
+    <div class="workspace">
+      <aside class="sidebar">
+        <div class="sidebar-heading"><span>Source</span><span class="step">01</span></div>
+        <label for="inputSource" class="field-label">Links or tracklist</label>
+        <textarea id="inputSource" spellcheck="false" placeholder="Paste links, one per line, or a tracklist"></textarea>
+        <button id="analyzeBtn" class="button button-primary full-width">Load tracks <span aria-hidden="true">→</span></button>
+        <p class="hint">Paste a track, playlist, or several links.</p>
 
-      <!-- Configuration Bar -->
-      <section class="card config-section">
-        <div class="config-grid">
-          <div class="config-item">
-            <label>Destination Folder</label>
-            <div class="folder-picker">
-              <input type="text" id="destPath" readonly placeholder="Choose library destination folder...">
-              <button id="browseBtn" class="btn-secondary">Browse</button>
-            </div>
-          </div>
+        <div class="divider"></div>
+        <div class="sidebar-heading"><span>Export</span><span class="step">02</span></div>
+        <label for="destPath" class="field-label">Destination</label>
+        <div class="folder-row"><input id="destPath" readonly placeholder="Choose a folder"><button id="browseBtn" class="button button-secondary">Browse</button></div>
+        <label for="crateMode" class="field-label">Organize files</label>
+        <select id="crateMode">
+          <option value="flat">One folder</option>
+          <option value="partitioned">Artist or genre folders</option>
+          <option value="sampler">Sampler bank</option>
+        </select>
+        <details class="settings"><summary>Processing settings</summary><div class="settings-content"><label for="concurrencyRange" class="field-label">Simultaneous tracks <strong id="concurrencyVal">8</strong></label><input type="range" id="concurrencyRange" min="1" max="16" value="8"><p class="hint">MP3 · 320 kbps · 44.1 kHz</p></div></details>
+      </aside>
 
-          <div class="config-item">
-            <label>DJ Crate Organization</label>
-            <select id="crateMode" class="select-dropdown">
-              <option value="flat">One Folder</option>
-              <option value="partitioned">Artist or Genre Subfolders</option>
-              <option value="sampler">Sampler Bank</option>
-            </select>
-          </div>
+      <main class="main-panel">
+        <div class="queue-toolbar"><div><h1>Track queue <span id="trackCount">0</span></h1><p id="collectionTitle">Load a link or tracklist to begin</p></div><span class="format-note">MP3 EXPORT</span></div>
+        <div class="table-scroll"><table class="track-table"><thead><tr><th class="number-col">#</th><th>Track</th><th>Artist</th><th>Mix / edit</th><th class="duration-col">Time</th><th class="status-col">Status</th></tr></thead><tbody id="trackTableBody"><tr class="empty-row"><td colspan="6"><div class="empty-state"><strong>Nothing in the queue</strong><span>Paste links or a tracklist on the left, then load tracks.</span></div></td></tr></tbody></table></div>
+        <details class="activity" id="activityPanel"><summary>Activity <span id="activityCount">0</span></summary><div class="activity-inner"><div id="logConsole" class="log-console" role="log" aria-live="polite"></div><button id="clearLogBtn" class="text-button">Clear activity</button></div></details>
+      </main>
+    </div>
 
-          <div class="config-item">
-            <label>Worker Concurrency (<span id="concurrencyVal">8</span> workers)</label>
-            <input type="range" id="concurrencyRange" min="1" max="16" value="8" class="slider">
-          </div>
-
-          <div class="config-item spec-badges">
-            <label>Output Format</label>
-            <div class="badge-row">
-              <span class="spec-pill">320 kbps MP3</span>
-              <span class="spec-pill">44.1 kHz stereo</span>
-              <span class="spec-pill">Metadata and artwork</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Workspace Body: Tracklist & Live Log -->
-      <div class="workspace-grid">
-        <!-- Track Queue Table -->
-        <section class="card queue-section">
-          <div class="section-header">
-            <h3>Track Queue (<span id="trackCount">0</span>)</h3>
-            <span id="collectionTitle" class="collection-title">Paste a link or tracklist</span>
-          </div>
-          <div class="table-container">
-            <table class="track-table">
-              <thead>
-                <tr>
-                  <th width="40">#</th>
-                  <th width="50">Art</th>
-                  <th>Title</th>
-                  <th>Artist</th>
-                  <th>Mix / Edit</th>
-                  <th width="65">Duration</th>
-                  <th width="120">Status</th>
-                </tr>
-              </thead>
-              <tbody id="trackTableBody">
-                <tr class="empty-row">
-                  <td colspan="7">Paste a link or tracklist above and click Analyze & Load.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <!-- Live Milestone Log -->
-        <section class="card log-section">
-          <div class="section-header">
-            <h3>Milestone Log Console</h3>
-            <button id="clearLogBtn" class="btn-ghost-small">Clear</button>
-          </div>
-          <div id="logConsole" class="log-console">
-            <div class="log-entry sys-msg">DeckPrep is ready. Paste a link or tracklist to begin.</div>
-          </div>
-        </section>
-      </div>
-    </main>
-
-    <!-- Bottom Action Bar -->
-    <footer class="app-footer">
-      <div class="progress-info">
-        <div class="progress-bar-wrapper">
-          <div id="globalProgressBar" class="progress-bar-fill"></div>
-        </div>
-        <div class="progress-status-text">
-          <span id="progressStats">0 / 0 completed</span>
-          <span id="percentText">0%</span>
-        </div>
-      </div>
-      <div class="footer-actions">
-        <button id="openFolderBtn" class="btn-secondary" disabled>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-          </svg>
-          Open In Explorer
-        </button>
-        <button id="cancelBtn" class="btn-danger" disabled>Cancel</button>
-        <button id="startBtn" class="btn-cue" disabled>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <polygon points="5 3 19 12 5 21 5 3"></polygon>
-          </svg>
-          Start Download
-        </button>
-      </div>
-    </footer>
+    <footer class="footer"><div class="progress-block"><div class="progress-track"><div id="globalProgressBar" class="progress-fill"></div></div><div class="progress-label"><span id="progressStats">0 / 0 completed</span><span id="percentText">0%</span></div></div><div class="footer-actions"><button id="openFolderBtn" class="button button-secondary" disabled>Open folder</button><button id="cancelBtn" class="button button-secondary" disabled>Cancel</button><button id="startBtn" class="button button-primary" disabled>Download tracks <span aria-hidden="true">↓</span></button></div></footer>
   </div>
-
   <script src="app.js"></script>
 </body>
 </html>

@@ -1,12 +1,12 @@
 # DeckPrep
 
-DeckPrep is a Windows desktop app for building DJ ready MP3 crates from links and pasted tracklists. Paste a Spotify, SoundCloud, or YouTube link, or a list of artist and title lines; review the loaded tracks; choose a destination; and start a batch download with metadata and artwork.
+DeckPrep is a Windows desktop app for preparing DJ crates from links and pasted tracklists. Paste a track, album, or playlist link, several links on separate lines, or a list of artist and title lines. Review the queue, choose a destination, and download MP3 files with metadata and artwork.
 
-**Use DeckPrep only for audio you have permission to download and copy.** A streaming link or subscription alone does not grant that permission. The app asks for confirmation before starting a batch. Spotify links provide tracklist metadata; DeckPrep searches separately for matching audio and does not copy audio from Spotify's service. You are responsible for following source site terms and rights holder permissions.
+Spotify links supply track metadata. DeckPrep finds matching audio from available sources; it does not extract audio from Spotify. Use sources and audio according to their terms and permissions.
 
 ## Features
 
-- Link and pasted tracklist ingestion.
+- Single links, multiple links, and pasted tracklists.
 - Mix and edit names retained in search and filenames.
 - Duration comparison to help reject the wrong version when source timing is available.
 - MP3 output at 320 kbps and 44.1 kHz stereo. Re-encoding cannot improve source quality.

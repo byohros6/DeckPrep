@@ -89,6 +89,17 @@ async function extractSpotify(url) {
 export async function parseInput(input) {
   const raw = String(input || '').trim();
   if (!raw) throw new Error('Paste a link or tracklist first');
+  const lines = raw.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  if (lines.length > 1 && lines.some(line => detectInputType(line) !== 'text' || /^https?:\/\//i.test(line))) {
+    if (!lines.every(line => detectInputType(line) !== 'text')) throw new Error('Paste links on separate lines, or use a tracklist');
+    const results = [];
+    for (const line of lines) {
+      const type = detectInputType(line);
+      const url = sanitizeUrl(line);
+      results.push(type === 'spotify' ? await extractSpotify(url) : await extractWithYtDlp(url, type));
+    }
+    return { source: 'links', title: `${lines.length} links`, tracks: results.flatMap(result => result.tracks) };
+  }
   const type = detectInputType(raw);
   if (type === 'text') {
     if (/^https?:\/\//i.test(raw)) throw new Error('This link source is not supported');

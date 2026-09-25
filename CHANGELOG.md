@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.0
+
+- Rebuilt the desktop interface with a compact source panel and track-focused queue.
+- Removed the native menu, simplified export controls, and moved activity into a collapsible panel.
+- Accepts multiple links pasted on separate lines.
+- Streamlined the download flow and updated the project description.
+
 ## 1.1.0
 
 - Renamed the app DeckPrep and restored link-first ingestion and downloads.

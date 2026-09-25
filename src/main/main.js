@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, Menu } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { registerIpcHandlers } from './ipc.js';
@@ -10,6 +10,7 @@ let mainWindow = null;
 
 function createWindow() {
   const isSmokeTest = process.argv.includes('--smoke-test');
+  const captureArg = process.argv.find(arg => arg.startsWith('--capture-ui='));
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -19,7 +20,8 @@ function createWindow() {
     show: !isSmokeTest,
     backgroundColor: '#0d1117',
     title: 'DeckPrep',
-    autoHideMenuBar: true,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#1b1d20', symbolColor: '#e6e8eb', height: 40 },
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.cjs'),
       contextIsolation: true,
@@ -29,6 +31,23 @@ function createWindow() {
   });
 
   registerIpcHandlers(mainWindow);
+  Menu.setApplicationMenu(null);
+  mainWindow.setMenuBarVisibility(false);
+
+  if (captureArg) {
+    mainWindow.webContents.on('did-finish-load', async () => {
+      try {
+        await new Promise(resolve => setTimeout(resolve, 900));
+        const fs = await import('node:fs/promises');
+        const image = await mainWindow.webContents.capturePage();
+        await fs.writeFile(captureArg.slice('--capture-ui='.length), image.toPNG());
+        app.exit(0);
+      } catch (err) {
+        console.error(err);
+        app.exit(1);
+      }
+    });
+  }
 
   if (isSmokeTest) {
     mainWindow.webContents.on('did-finish-load', async () => {

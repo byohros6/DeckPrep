@@ -1,7 +1,7 @@
 {
   "name": "deckprep",
-  "version": "1.1.0",
-  "description": "Link-based DJ audio downloads and crate preparation for authorized use",
+  "version": "1.2.0",
+  "description": "Prepare DJ crates from music links and tracklists",
   "main": "src/main/main.js",
   "type": "module",
   "scripts": {

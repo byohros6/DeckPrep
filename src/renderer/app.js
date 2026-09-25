@@ -2,7 +2,6 @@ const byId = id => document.getElementById(id);
 const binaryStatusEl = byId('binaryStatus');
 const inputSource = byId('inputSource');
 const analyzeBtn = byId('analyzeBtn');
-const rightsConfirmed = byId('rightsConfirmed');
 const destPathInput = byId('destPath');
 const browseBtn = byId('browseBtn');
 const crateModeSelect = byId('crateMode');
@@ -12,6 +11,8 @@ const trackCountEl = byId('trackCount');
 const collectionTitleEl = byId('collectionTitle');
 const trackTableBody = byId('trackTableBody');
 const logConsole = byId('logConsole');
+const activityPanel = byId('activityPanel');
+const activityCount = byId('activityCount');
 const globalProgressBar = byId('globalProgressBar');
 const progressStats = byId('progressStats');
 const percentText = byId('percentText');
@@ -22,6 +23,7 @@ const startBtn = byId('startBtn');
 let loadedTracks = [];
 let destinationDir = '';
 let isDownloading = false;
+let logCount = 0;
 
 function appendLog(message, className = '') {
   const entry = document.createElement('div');
@@ -29,6 +31,8 @@ function appendLog(message, className = '') {
   entry.textContent = message;
   logConsole.appendChild(entry);
   logConsole.scrollTop = logConsole.scrollHeight;
+  activityCount.textContent = String(++logCount);
+  if (className === 'err-msg') activityPanel.open = true;
 }
 
 function escapeHtml(value) {
@@ -43,7 +47,7 @@ function formatDuration(value) {
 }
 
 function validateStartReady() {
-  startBtn.disabled = isDownloading || !loadedTracks.length || !destinationDir || !rightsConfirmed.checked;
+  startBtn.disabled = isDownloading || !loadedTracks.length || !destinationDir;
 }
 
 function updateProgress() {
@@ -58,13 +62,12 @@ function renderTrackTable() {
   trackTableBody.innerHTML = loadedTracks.length ? loadedTracks.map(track => `
     <tr id="track-row-${track.index}">
       <td>${String(track.index).padStart(3, '0')}</td>
-      <td>♪</td>
-      <td><strong>${escapeHtml(track.title)}</strong></td>
+      <td class="track-name" title="${escapeHtml(track.title)}">${escapeHtml(track.title)}</td>
       <td>${escapeHtml(track.artist)}</td>
       <td>${escapeHtml(track.mix || '—')}</td>
       <td>${formatDuration(track.durationSec)}</td>
       <td><span class="status-chip ${escapeHtml(track.status)}" id="status-chip-${track.index}">${escapeHtml(track.status)}</span></td>
-    </tr>`).join('') : '<tr class="empty-row"><td colspan="7">No tracks loaded.</td></tr>';
+    </tr>`).join('') : '<tr class="empty-row"><td colspan="6"><div class="empty-state"><strong>Nothing in the queue</strong><span>Paste links or a tracklist on the left, then load tracks.</span></div></td></tr>';
 }
 
 analyzeBtn.addEventListener('click', async () => {
@@ -78,7 +81,6 @@ analyzeBtn.addEventListener('click', async () => {
     loadedTracks = result.tracks.map((track, index) => ({ ...track, index: index + 1, status: 'pending' }));
     trackCountEl.textContent = loadedTracks.length;
     collectionTitleEl.textContent = `${result.title} (${result.source})`;
-    rightsConfirmed.checked = false;
     renderTrackTable();
     updateProgress();
     validateStartReady();
@@ -91,11 +93,10 @@ analyzeBtn.addEventListener('click', async () => {
     appendLog(`Analysis failed: ${err.message}`, 'err-msg');
   } finally {
     analyzeBtn.disabled = false;
-    analyzeBtn.textContent = 'Analyze & Load';
+    analyzeBtn.innerHTML = 'Load tracks <span aria-hidden="true">→</span>';
   }
 });
 
-rightsConfirmed.addEventListener('change', validateStartReady);
 browseBtn.addEventListener('click', async () => {
   try {
     const folder = await window.djAPI.selectFolder();
@@ -107,7 +108,7 @@ browseBtn.addEventListener('click', async () => {
   } catch (err) { appendLog(`Could not choose destination: ${err.message}`, 'err-msg'); }
 });
 openFolderBtn.addEventListener('click', () => window.djAPI.openFolder(destinationDir));
-byId('clearLogBtn').addEventListener('click', () => { logConsole.textContent = ''; });
+byId('clearLogBtn').addEventListener('click', () => { logConsole.textContent = ''; logCount = 0; activityCount.textContent = '0'; });
 concurrencyRange.addEventListener('input', () => { concurrencyVal.textContent = concurrencyRange.value; });
 
 startBtn.addEventListener('click', async () => {
@@ -121,7 +122,7 @@ startBtn.addEventListener('click', async () => {
   validateStartReady();
   try {
     const result = await window.djAPI.startDownload({
-      destinationDir, authorized: rightsConfirmed.checked,
+      destinationDir,
       concurrency: Number(concurrencyRange.value), mode: crateModeSelect.value
     });
     if (!result.success) throw new Error(result.error);
@@ -162,16 +163,16 @@ window.djAPI.onBatchCompleted(summary => {
     byId('appVersion').textContent = `v${await window.djAPI.getAppVersion()}`;
     const status = await window.djAPI.checkBinaries();
     const ready = status.ffmpeg?.found && status.ytDlp?.found;
-    binaryStatusEl.textContent = ready ? 'Engines Ready' : 'Engines Missing';
-    binaryStatusEl.className = `status-badge ${ready ? 'ready' : 'missing'}`;
+    binaryStatusEl.textContent = ready ? 'Tools ready' : 'Tools missing';
+    binaryStatusEl.className = `engine-status ${ready ? 'ready' : 'missing'}`;
     const info = await window.djAPI.getSystemInfo();
     const workers = Math.max(1, info.defaultConcurrency || 2);
     concurrencyRange.max = String(Math.max(32, workers));
     concurrencyRange.value = String(workers);
     concurrencyVal.textContent = String(workers);
   } catch (err) {
-    binaryStatusEl.textContent = 'Engine Error';
-    binaryStatusEl.className = 'status-badge missing';
+    binaryStatusEl.textContent = 'Tool error';
+    binaryStatusEl.className = 'engine-status missing';
     appendLog(err.message, 'err-msg');
   }
 })();

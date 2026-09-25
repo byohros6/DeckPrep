@@ -23,6 +23,22 @@ test('pasted tracklist loads and retains mix information', async () => {
   assert.match(buildSearchQuery(parsed.tracks[0].artist, parsed.tracks[0].title, parsed.tracks[0].mix), /Extended Mix/);
 });
 
+test('multiple links load into one queue', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async url => {
+    const title = url.endsWith('/first') ? 'First track' : 'Second track';
+    const data = { props: { pageProps: { state: { data: { entity: { title, artists: [{ name: 'Artist' }] } } } } } };
+    return { ok: true, text: async () => `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(data)}</script>` };
+  };
+  try {
+    const result = await parseInput('https://open.spotify.com/track/first\nhttps://open.spotify.com/track/second');
+    assert.equal(result.source, 'links');
+    assert.deepEqual(result.tracks.map(track => track.title), ['First track', 'Second track']);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('download and transcoding engines are present', async () => {
   const status = await checkBinaries();
   assert.equal(status.ytDlp.found, true);

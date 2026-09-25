@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { detectInputType, sanitizeUrl, parseInput } from '../src/main/engine/sources.js';
+import { detectInputType, sanitizeUrl, parseInput, normalizeTrack } from '../src/main/engine/sources.js';
 import { buildSearchQuery } from '../src/main/engine/resolver.js';
 import { checkBinaries } from '../src/main/engine/binaryManager.js';
 
@@ -37,6 +37,18 @@ test('multiple links load into one queue', async () => {
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('SoundCloud playlist entries without titles stay in the queue and resolve to full metadata', () => {
+  const url = 'https://soundcloud.com/moanrecordings/hector-couto-rendher-break-down-dennis-cruz-remix';
+  const pending = normalizeTrack({ url, playlist_title: 'Deep tech/minimal/tech house extended' }, 'soundcloud', url, 1);
+  assert.equal(pending.needsMetadata, true);
+  assert.equal(pending.directUrl, url);
+  assert.match(pending.title, /hector couto rendher/i);
+  const resolved = normalizeTrack({ webpage_url: url, title: 'Hector Couto, Rendher - Break Down (Dennis Cruz Remix)', artist: 'Hector Couto, Rendher', duration: 342 }, 'soundcloud', url);
+  assert.equal(resolved.needsMetadata, false);
+  assert.equal(resolved.title, 'Break Down (Dennis Cruz Remix)');
+  assert.equal(resolved.durationSec, 342);
 });
 
 test('download and transcoding engines are present', async () => {

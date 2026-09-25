@@ -8,6 +8,7 @@ import { resolveAudioCandidate } from './resolver.js';
 import { transcodeToMp3 } from './transcoder.js';
 import { tagMp3File } from './tagger.js';
 import { buildDestinationPath } from './organizer.js';
+import { normalizeTrack } from './sources.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -65,6 +66,22 @@ export class DownloadQueue {
   }
 
   async processTrack(track) {
+    let candidate;
+    if (track.needsMetadata) {
+      track.status = 'resolving';
+      this.onTrackProgress(track);
+      candidate = await resolveAudioCandidate({
+        artist: track.artist, title: track.title, mix: track.mix,
+        targetDurationSec: 0, directUrl: track.directUrl,
+        signal: this.abortController.signal
+      });
+      if (this.isCancelled) { track.status = 'cancelled'; return; }
+      if (!candidate.directMatch || !candidate.metadata?.title) throw new Error('Could not read track metadata from this link');
+      const metadata = normalizeTrack(candidate.metadata, track.source, track.directUrl);
+      if (!metadata.album) metadata.album = track.album;
+      Object.assign(track, metadata);
+      this.onTrackProgress(track);
+    }
     if (track.source === 'soundcloud' && track.durationSec > 0 && track.durationSec <= 35 && this.mode !== 'sampler') {
       throw new Error('SoundCloud supplied only a short preview for this track');
     }
@@ -83,7 +100,7 @@ export class DownloadQueue {
     }
     track.status = 'resolving';
     this.onTrackProgress(track);
-    const candidate = await resolveAudioCandidate({
+    candidate ||= await resolveAudioCandidate({
       artist: track.artist, title: track.title, mix: track.mix,
       targetDurationSec: track.durationSec, directUrl: track.directUrl,
       signal: this.abortController.signal

@@ -27,7 +27,7 @@ export async function resolveAudioCandidate({ artist, title, mix, targetDuration
       });
       const item = readJsonLines(stdout)[0];
       if (item && (!targetDurationSec || !item.duration || Math.abs(item.duration - targetDurationSec) <= 10)) {
-        return { selectedUrl: directUrl, durationSec: item.duration || 0, directMatch: true };
+        return { selectedUrl: directUrl, durationSec: item.duration || 0, directMatch: true, metadata: item };
       }
     } catch (err) {
       if (signal?.aborted) throw err;

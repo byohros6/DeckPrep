@@ -21,20 +21,30 @@ export function sanitizeUrl(input) {
   return url.toString();
 }
 
-function normalizeTrack(item, source, fallbackUrl) {
-  const rawTitle = item.title || item.name || '';
+export function normalizeTrack(item, source, fallbackUrl, index = 0) {
+  const directUrl = item.webpage_url || item.original_url || item.url || fallbackUrl;
+  const needsMetadata = !item.title && !item.name;
+  let fallbackTitle = `Track ${String(index || 1).padStart(3, '0')}`;
+  if (needsMetadata && directUrl) {
+    try {
+      const slug = decodeURIComponent(new URL(directUrl).pathname.split('/').filter(Boolean).at(-1));
+      if (slug && !/^\d+$/.test(slug)) fallbackTitle = slug.replace(/[-_]+/g, ' ');
+    } catch { /* Keep the numbered placeholder. */ }
+  }
+  const rawTitle = item.title || item.name || fallbackTitle;
   const parsed = parseTracklistLine(rawTitle);
   const explicitArtist = item.artist || item.artists?.map(artist => artist.name).join(', ');
-  const artist = cleanArtist(explicitArtist || (parsed?.artist !== 'Unknown Artist' ? parsed?.artist : '') || item.uploader || item.channel || 'Unknown Artist');
-  const title = cleanTitle(explicitArtist ? rawTitle : (parsed?.artist !== 'Unknown Artist' ? parsed.title : rawTitle));
-  let directUrl = item.webpage_url || item.original_url || item.url || fallbackUrl;
-  if (source === 'youtube' && item.id && !/^https?:\/\//i.test(directUrl)) directUrl = `https://www.youtube.com/watch?v=${item.id}`;
+  const parsedArtist = parsed?.artist !== 'Unknown Artist' ? parsed?.artist : '';
+  const artist = needsMetadata ? '—' : cleanArtist(explicitArtist || parsedArtist || item.uploader || item.channel || 'Unknown Artist');
+  const title = cleanTitle(parsedArtist ? parsed.title : rawTitle);
+  let resolvedUrl = directUrl;
+  if (source === 'youtube' && item.id && !/^https?:\/\//i.test(resolvedUrl)) resolvedUrl = `https://www.youtube.com/watch?v=${item.id}`;
   return {
     artist, title, mix: parsed?.mix || '',
     album: item.album || '', year: item.year || null,
     artworkUrl: item.thumbnail || item.artworkUrl || null,
     durationSec: Math.round(item.duration || item.durationSec || 0),
-    directUrl, source
+    directUrl: resolvedUrl, source, needsMetadata
   };
 }
 
@@ -42,15 +52,18 @@ async function extractWithYtDlp(url, source) {
   const binary = await resolveBinary('yt-dlp');
   if (!binary) throw new Error('yt-dlp is missing. Run npm run setup:engine.');
   const { stdout } = await execFileAsync(binary, ['--dump-json', '--flat-playlist', '--', url], { maxBuffer: 40 * 1024 * 1024 });
-  const tracks = stdout.split(/\r?\n/).filter(Boolean).flatMap(line => {
+  const items = stdout.split(/\r?\n/).filter(Boolean).flatMap(line => {
     try {
-      const item = JSON.parse(line);
-      if (!item.title || /\[(deleted|private) video\]/i.test(item.title)) return [];
-      return [normalizeTrack(item, source, url)];
+      return [JSON.parse(line)];
     } catch { return []; }
   });
+  const tracks = items.flatMap((item, index) => {
+    if (/\[(deleted|private) video\]/i.test(item.title || '')) return [];
+    if (!item.title && !item.name && !(item.webpage_url || item.original_url || item.url)) return [];
+    return [normalizeTrack(item, source, url, index + 1)];
+  });
   if (!tracks.length) throw new Error('No tracks found at that link');
-  return { title: tracks.length === 1 ? tracks[0].title : `${source} collection`, tracks };
+  return { title: items[0]?.playlist_title || items[0]?.playlist || (tracks.length === 1 ? tracks[0].title : `${source} collection`), tracks };
 }
 
 function spotifyTrack(item, albumName, art) {

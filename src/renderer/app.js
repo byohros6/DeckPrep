@@ -80,7 +80,7 @@ analyzeBtn.addEventListener('click', async () => {
     if (!result.success) throw new Error(result.error);
     loadedTracks = result.tracks.map((track, index) => ({ ...track, index: index + 1, status: 'pending' }));
     trackCountEl.textContent = loadedTracks.length;
-    collectionTitleEl.textContent = `${result.title} (${result.source})`;
+    collectionTitleEl.textContent = `${result.title} · ${result.tracks.some(track => track.needsMetadata) ? 'Track details fill in during download' : result.source}`;
     renderTrackTable();
     updateProgress();
     validateStartReady();
@@ -142,7 +142,15 @@ cancelBtn.addEventListener('click', async () => {
 
 function updateTrack(track) {
   const item = loadedTracks.find(entry => entry.index === track.index);
-  if (item) item.status = track.status;
+  if (item) Object.assign(item, track);
+  const row = byId(`track-row-${track.index}`);
+  if (row && item) {
+    row.cells[1].textContent = item.title;
+    row.cells[1].title = item.title;
+    row.cells[2].textContent = item.artist;
+    row.cells[3].textContent = item.mix || '—';
+    row.cells[4].textContent = formatDuration(item.durationSec);
+  }
   const chip = byId(`status-chip-${track.index}`);
   if (chip) { chip.className = `status-chip ${track.status}`; chip.textContent = track.status; }
   updateProgress();

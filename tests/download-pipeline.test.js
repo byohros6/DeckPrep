@@ -12,7 +12,7 @@ import { DownloadQueue } from '../src/main/engine/downloadQueue.js';
 
 const execFileAsync = promisify(execFile);
 
-test('a permitted audio URL downloads, transcodes, tags, and keeps source intact', async () => {
+test('an audio URL downloads, transcodes, tags, and keeps source intact', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'deckprep-test-'));
   const source = path.join(root, 'source.mp3');
   const output = path.join(root, 'output');

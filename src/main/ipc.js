@@ -29,7 +29,7 @@ export function registerIpcHandlers(mainWindow) {
   ipcMain.handle('get-app-version', () => app.getVersion());
   ipcMain.handle('get-system-info', () => {
     const cpuCores = os.cpus()?.length || 4;
-    return { cpuCores, defaultConcurrency: Math.max(1, cpuCores - 2) };
+    return { cpuCores, defaultConcurrency: Math.min(4, Math.max(1, cpuCores - 2)) };
   });
   ipcMain.handle('select-folder', async () => {
     const result = await openDialog({

@@ -1,0 +1,26 @@
+name: Windows checks
+
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+
+jobs:
+  test-and-package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run setup:engine
+      - run: npm test
+      - run: npm run build:icon
+      - run: npm run dist:portable
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deckprep-portable-${{ github.sha }}
+          path: dist/DeckPrep-Portable-*.exe
+          if-no-files-found: error

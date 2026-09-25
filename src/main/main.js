@@ -1,10 +1,17 @@
 import { app, BrowserWindow, Menu } from 'electron';
 import path from 'path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'url';
 import { registerIpcHandlers } from './ipc.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const testDataArg = process.argv.find(arg => arg.startsWith('--test-user-data='));
+if (testDataArg) {
+  const directory = testDataArg.slice('--test-user-data='.length);
+  fs.mkdirSync(directory, { recursive: true });
+  app.setPath('userData', directory);
+}
 
 let mainWindow = null;
 
@@ -13,6 +20,10 @@ function createWindow() {
   const captureArg = process.argv.find(arg => arg.startsWith('--capture-ui='));
   const captureSourceArg = process.argv.find(arg => arg.startsWith('--capture-source='));
   const captureDetailsArg = process.argv.find(arg => arg.startsWith('--capture-details='));
+  const captureRestore = process.argv.includes('--capture-restore');
+  const captureMatch = process.argv.includes('--capture-match');
+  const captureChooseMatch = process.argv.includes('--capture-choose-match');
+  const captureCancelMatch = process.argv.includes('--capture-cancel-match');
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -40,6 +51,14 @@ function createWindow() {
     mainWindow.webContents.on('did-finish-load', async () => {
       try {
         await new Promise(resolve => setTimeout(resolve, 900));
+        if (captureRestore) {
+          await mainWindow.webContents.executeJavaScript("document.getElementById('resumeSessionBtn').click()");
+          for (let attempt = 0; attempt < 30; attempt++) {
+            const count = await mainWindow.webContents.executeJavaScript("Number(document.getElementById('trackCount').textContent)");
+            if (count > 0) break;
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+        }
         if (captureSourceArg) {
           const source = captureSourceArg.slice('--capture-source='.length);
           await mainWindow.webContents.executeJavaScript(`document.getElementById('inputSource').value = ${JSON.stringify(source)}; document.getElementById('analyzeBtn').click();`);
@@ -61,6 +80,29 @@ function createWindow() {
               await new Promise(resolve => setTimeout(resolve, 300));
               const done = await mainWindow.webContents.executeJavaScript("document.getElementById('metadataBar').hidden && Number(document.getElementById('activityCount').textContent) > 1");
               if (done) break;
+            }
+          }
+          if (captureMatch) {
+            await mainWindow.webContents.executeJavaScript("document.getElementById('selectAll').click(); document.querySelector('.track-select').click(); document.getElementById('findMatchesBtn').click()");
+            for (let attempt = 0; attempt < 150; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 300));
+              const done = await mainWindow.webContents.executeJavaScript("document.getElementById('cancelMatchesBtn').hidden && Number(document.getElementById('activityCount').textContent) > 1");
+              if (done) break;
+            }
+            await mainWindow.webContents.executeJavaScript("document.querySelector('tr[data-index]').click()");
+            if (captureChooseMatch) {
+              await mainWindow.webContents.executeJavaScript("document.querySelector('.candidate').click()");
+              await new Promise(resolve => setTimeout(resolve, 600));
+            }
+          }
+          if (captureCancelMatch) {
+            await mainWindow.webContents.executeJavaScript("document.getElementById('findMatchesBtn').click()");
+            await new Promise(resolve => setTimeout(resolve, 350));
+            await mainWindow.webContents.executeJavaScript("document.getElementById('cancelMatchesBtn').click()");
+            for (let attempt = 0; attempt < 30; attempt++) {
+              const done = await mainWindow.webContents.executeJavaScript("document.getElementById('cancelMatchesBtn').hidden");
+              if (done) break;
+              await new Promise(resolve => setTimeout(resolve, 200));
             }
           }
           await new Promise(resolve => setTimeout(resolve, 400));

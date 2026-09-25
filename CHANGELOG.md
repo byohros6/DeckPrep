@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.0-beta.1
+
+- Added public Apple Music playlist, album, and song import and clearer source details for all four core platforms.
+- Added queue search, filters, bulk selection, and a focused track detail panel.
+- Added SoundCloud and YouTube candidate matching with manual review when results are uncertain.
+- Added saved queue recovery with a resume-or-discard prompt, failed-track retry selection, and batch summaries.
+- Added output MP3 checks, Windows CI packaging, and an in-repository roadmap.
+- Added a DeckPrep Windows application icon and refreshed the repository screenshots.
+
 ## 1.3.1
 
 - Fetches SoundCloud track details through the public oEmbed endpoint instead of running a full extractor for every track.

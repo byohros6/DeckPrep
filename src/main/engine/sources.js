@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { resolveBinary } from './binaryManager.js';
 import { parseBulkText, parseTracklistLine } from './parser.js';
 import { cleanArtist, cleanTitle } from './metadata.js';
+import { extractAppleMusic } from './providers/appleMusic.js';
 
 const execFileAsync = promisify(execFile);
 const soundCloudMetadataCache = new Map();
@@ -10,6 +11,7 @@ const soundCloudMetadataCache = new Map();
 export function detectInputType(input) {
   const value = String(input || '').trim();
   if (/^(?:https?:\/\/)?(?:open\.)?spotify\.com\/(?:intl-[a-z]{2}\/)?(track|album|playlist)\//i.test(value)) return 'spotify';
+  if (/^(?:https?:\/\/)?music\.apple\.com\/[a-z]{2}\/(?:playlist|album|song)\//i.test(value)) return 'apple';
   if (/^(?:https?:\/\/)?(?:(?:www|m)\.)?soundcloud\.com\//i.test(value) || /^(?:https?:\/\/)?on\.soundcloud\.com\//i.test(value)) return 'soundcloud';
   if (/^(?:https?:\/\/)?(?:(?:www|m|music)\.)?(?:youtube\.com|youtu\.be)\//i.test(value)) return 'youtube';
   return 'text';
@@ -36,12 +38,16 @@ export function normalizeTrack(item, source, fallbackUrl, index = 0) {
   const parsed = parseTracklistLine(rawTitle);
   const explicitArtist = item.artist || item.artists?.map(artist => artist.name).join(', ');
   const parsedArtist = parsed?.artist !== 'Unknown Artist' ? parsed?.artist : '';
-  const artist = needsMetadata ? '—' : cleanArtist(explicitArtist || parsedArtist || item.uploader || item.channel || 'Unknown Artist');
-  const title = cleanTitle(parsedArtist ? parsed.title : rawTitle);
+  const channel = item.channel || item.uploader || '';
+  const rightSideIsArtist = source === 'youtube' && !explicitArtist && parsedArtist && channel
+    && parsed.title.toLowerCase().includes(channel.toLowerCase())
+    && !parsedArtist.toLowerCase().includes(channel.toLowerCase());
+  const artist = needsMetadata ? '—' : cleanArtist(explicitArtist || (rightSideIsArtist ? parsed.title : parsedArtist) || channel || 'Unknown Artist');
+  const title = cleanTitle(rightSideIsArtist ? parsedArtist : parsedArtist ? parsed.title : rawTitle);
   let resolvedUrl = directUrl;
   if (source === 'youtube' && item.id && !/^https?:\/\//i.test(resolvedUrl)) resolvedUrl = `https://www.youtube.com/watch?v=${item.id}`;
   return {
-    artist, title, mix: parsed?.mix || '',
+    artist, title, mix: rightSideIsArtist ? parseTracklistLine(title)?.mix || '' : parsed?.mix || '',
     album: item.album || '', year: item.year || null,
     artworkUrl: item.thumbnail || item.artworkUrl || null,
     durationSec: Math.round(item.duration || item.durationSec || 0),
@@ -127,6 +133,11 @@ async function extractWithYtDlp(url, source) {
   });
   if (!tracks.length) throw new Error('No tracks found at that link');
   const result = { title: items[0]?.playlist_title || items[0]?.playlist || (tracks.length === 1 ? tracks[0].title : `${source} collection`), tracks };
+  if (source === 'youtube' && items[0]?.playlist_id) {
+    result.creator = items[0].playlist_uploader || '';
+    result.artworkUrl = items[0].thumbnails?.at(-1)?.url || null;
+    result.sourceUrl = items[0].playlist_webpage_url || url;
+  }
   if (source === 'soundcloud' && items[0]?.playlist_id) {
     const playlistUrl = items[0].playlist_webpage_url || url;
     try {
@@ -144,6 +155,7 @@ async function extractWithYtDlp(url, source) {
 
 function spotifyTrack(item, albumName, art) {
   const track = item.track || item;
+  const id = track.uri?.split(':').at(-1);
   return {
     title: track.title || track.name,
     artist: track.subtitle || track.artists?.map(artist => artist.name).join(', ') || 'Unknown Artist',
@@ -152,7 +164,8 @@ function spotifyTrack(item, albumName, art) {
     durationSec: Math.round((track.duration_ms || track.duration || 0) / 1000),
     year: track.album?.release_date ? Number(track.album.release_date.slice(0, 4)) : null,
     mix: parseTracklistLine(track.title || track.name || '')?.mix || '',
-    source: 'spotify'
+    source: 'spotify', sourceUrl: id ? `https://open.spotify.com/track/${id}` : null,
+    needsMetadata: false
   };
 }
 
@@ -172,7 +185,8 @@ async function extractSpotify(url) {
   const items = type === 'track' ? [entity] : entity.trackList || [];
   const tracks = items.map(item => spotifyTrack(item, title, artworkUrl)).filter(track => track.title);
   if (!tracks.length) throw new Error('No tracks found in this Spotify link');
-  return { title, tracks, creator: entity.subtitle || entity.owner?.name || '', artworkUrl, sourceUrl: url };
+  return { title, tracks, creator: entity.subtitle || entity.owner?.name || '', artworkUrl, sourceUrl: url,
+    warning: type === 'playlist' && tracks.length >= 100 ? 'Spotify exposed 100 tracks; the full playlist length could not be verified.' : '' };
 }
 
 export async function parseInput(input) {
@@ -185,7 +199,7 @@ export async function parseInput(input) {
     for (const line of lines) {
       const type = detectInputType(line);
       const url = sanitizeUrl(line);
-      results.push(type === 'spotify' ? await extractSpotify(url) : await extractWithYtDlp(url, type));
+      results.push(type === 'spotify' ? await extractSpotify(url) : type === 'apple' ? await extractAppleMusic(url) : await extractWithYtDlp(url, type));
     }
     return { source: 'links', title: `${lines.length} links`, tracks: results.flatMap(result => result.tracks) };
   }
@@ -197,6 +211,6 @@ export async function parseInput(input) {
     return { source: 'text', title: 'Pasted tracklist', tracks };
   }
   const url = sanitizeUrl(raw);
-  const entity = type === 'spotify' ? await extractSpotify(url) : await extractWithYtDlp(url, type);
+  const entity = type === 'spotify' ? await extractSpotify(url) : type === 'apple' ? await extractAppleMusic(url) : await extractWithYtDlp(url, type);
   return { source: type, ...entity };
 }

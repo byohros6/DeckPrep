@@ -12,6 +12,17 @@ import { normalizeTrack } from './sources.js';
 
 const execFileAsync = promisify(execFile);
 
+export function verifyMp3File(filePath) {
+  const stat = fs.statSync(filePath);
+  if (stat.size < 8 * 1024) throw new Error('Output is too small to be a complete MP3');
+  const descriptor = fs.openSync(filePath, 'r');
+  const header = Buffer.alloc(3);
+  try { fs.readSync(descriptor, header, 0, 3, 0); } finally { fs.closeSync(descriptor); }
+  if (header.toString('ascii') !== 'ID3' && !(header[0] === 0xff && (header[1] & 0xe0) === 0xe0)) {
+    throw new Error('Output is not a valid MP3 file');
+  }
+}
+
 export class DownloadQueue {
   constructor({ destinationDir, concurrency = 4, mode = 'flat', onTrackProgress, onTrackCompleted, onLog, onAllCompleted }) {
     this.destinationDir = destinationDir;
@@ -72,7 +83,7 @@ export class DownloadQueue {
       this.onTrackProgress(track);
       candidate = await resolveAudioCandidate({
         artist: track.artist, title: track.title, mix: track.mix,
-        targetDurationSec: 0, directUrl: track.directUrl,
+        targetDurationSec: 0, directUrl: track.matchUrl || track.directUrl, strictDirect: true,
         signal: this.abortController.signal
       });
       if (this.isCancelled) { track.status = 'cancelled'; return; }
@@ -91,9 +102,8 @@ export class DownloadQueue {
     });
     track.outputPath = outputPath;
     if (fs.existsSync(outputPath)) {
-      if (fs.statSync(outputPath).size <= 100 * 1024) {
-        throw new Error('An output file already exists but appears incomplete; it was not overwritten');
-      }
+      try { verifyMp3File(outputPath); }
+      catch { throw new Error('An output file already exists but appears incomplete; it was not overwritten'); }
       track.status = 'skipped';
       this.onLog(`Skipped existing output: ${path.basename(outputPath)}`);
       return;
@@ -102,10 +112,15 @@ export class DownloadQueue {
     this.onTrackProgress(track);
     candidate ||= await resolveAudioCandidate({
       artist: track.artist, title: track.title, mix: track.mix,
-      targetDurationSec: track.durationSec, directUrl: track.directUrl,
+      targetDurationSec: track.matchUrl && track.matchState !== 'chosen' ? track.durationSec : 0,
+      directUrl: track.matchUrl || track.directUrl, strictDirect: true,
       signal: this.abortController.signal
     });
     if (this.isCancelled) { track.status = 'cancelled'; return; }
+    if (/^https:\/\/(?:[^/]+\.)?soundcloud\.com\//i.test(candidate.selectedUrl)
+      && candidate.durationSec > 0 && candidate.durationSec <= 35 && this.mode !== 'sampler') {
+      throw new Error('This SoundCloud link supplies only a short preview');
+    }
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deckprep-'));
     const template = path.join(tempDir, 'source.%(ext)s');
     const partialOutput = `${outputPath}.${process.pid}.${track.index}.partial.mp3`;
@@ -128,6 +143,7 @@ export class DownloadQueue {
       this.onTrackProgress(track);
       await tagMp3File(partialOutput, track);
       if (this.isCancelled) { track.status = 'cancelled'; return; }
+      verifyMp3File(partialOutput);
       if (fs.existsSync(outputPath)) throw new Error('Output appeared during processing; existing file kept');
       fs.renameSync(partialOutput, outputPath);
       track.status = 'done';

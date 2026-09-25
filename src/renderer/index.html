@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.sndcdn.com https://i.scdn.co">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.sndcdn.com https://i.scdn.co https://*.mzstatic.com https://i.ytimg.com">
   <title>DeckPrep</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -20,7 +20,7 @@
         <label for="inputSource" class="field-label">Links or tracklist</label>
         <textarea id="inputSource" spellcheck="false" placeholder="Paste links, one per line, or a tracklist"></textarea>
         <button id="analyzeBtn" class="button button-primary full-width">Load tracks <span aria-hidden="true">→</span></button>
-        <p class="hint">Paste a track, playlist, or several links.</p>
+        <p id="sourceHint" class="hint">Paste a track, playlist, or several links.</p>
 
         <div class="divider"></div>
         <div class="sidebar-heading"><span>Export</span><span class="step">02</span></div>
@@ -36,15 +36,20 @@
       </aside>
 
       <main class="main-panel">
-        <div class="queue-toolbar"><div class="queue-heading"><h1>Track queue <span id="trackCount">0</span></h1><p id="collectionTitle">Load a link or tracklist to begin</p></div><div class="queue-heading-right"><div id="playlistCard" class="playlist-card" hidden><img id="playlistArtwork" alt="Playlist artwork" draggable="false" hidden><div><strong id="playlistName"></strong><span id="playlistCreator"></span></div></div><span id="selectedCount" class="selected-count">0 selected</span></div></div>
+        <div class="queue-toolbar"><div class="queue-heading"><h1>Track queue <span id="trackCount">0</span></h1><p id="collectionTitle">Load a link or tracklist to begin</p></div><div class="queue-heading-right"><div id="playlistCard" class="playlist-card" hidden><img id="playlistArtwork" alt="Playlist artwork" draggable="false" hidden><div><strong id="playlistName"></strong><span id="playlistCreator"></span></div><button id="playlistOpenBtn" class="source-open" title="Open original playlist" aria-label="Open original playlist">↗</button></div><span id="selectedCount" class="selected-count">0 selected</span></div></div>
+        <div class="queue-controls"><input id="queueSearch" type="search" aria-label="Search tracks" placeholder="Search tracks or artists"><select id="queueFilter" aria-label="Filter tracks"><option value="all">All tracks</option><option value="selected">Selected</option><option value="review">Needs review</option><option value="failed">Failed</option><option value="done">Completed</option></select><button id="selectVisibleBtn" class="text-button">Select visible</button><button id="clearSelectionBtn" class="text-button">Clear selection</button><span id="visibleCount" class="visible-count">0 shown</span></div>
+        <div id="sourceWarning" class="source-warning" hidden></div>
         <div id="metadataBar" class="metadata-bar" hidden><div><strong id="metadataHeadline">Track details needed</strong><span id="metadataMessage">Get titles, artists, and durations before downloading. This does not download audio.</span></div><div class="metadata-actions"><button id="cancelDetailsBtn" class="button button-secondary" hidden>Stop</button><button id="fetchDetailsBtn" class="button button-primary">Fetch details</button></div></div>
-        <div class="table-scroll"><table class="track-table"><thead><tr><th class="select-col"><input id="selectAll" type="checkbox" aria-label="Select all tracks" disabled></th><th class="number-col">#</th><th>Track</th><th>Artist</th><th>Mix / edit</th><th class="duration-col">Time</th><th class="status-col">Status</th></tr></thead><tbody id="trackTableBody"><tr class="empty-row"><td colspan="7"><div class="empty-state"><strong>Nothing in the queue</strong><span>Paste links or a tracklist on the left, then load tracks.</span></div></td></tr></tbody></table></div>
+        <div id="matchingBar" class="metadata-bar match-bar" hidden><div><strong id="matchingHeadline">Find audio matches</strong><span id="matchingMessage">Search supported audio sources before downloading.</span></div><div class="metadata-actions"><button id="cancelMatchesBtn" class="button button-secondary" hidden>Stop</button><button id="findMatchesBtn" class="button button-primary">Find matches</button></div></div>
+        <div class="queue-content"><div class="table-scroll"><table class="track-table"><thead><tr><th class="select-col"><input id="selectAll" type="checkbox" aria-label="Select all tracks" disabled></th><th class="number-col">#</th><th>Track</th><th>Artist</th><th>Mix / edit</th><th class="duration-col">Time</th><th class="status-col">Status</th></tr></thead><tbody id="trackTableBody"><tr class="empty-row"><td colspan="7"><div class="empty-state"><strong>Nothing in the queue</strong><span>Paste links or a tracklist on the left, then load tracks.</span></div></td></tr></tbody></table></div><aside id="detailPanel" class="detail-panel" hidden aria-label="Track details"><div class="detail-heading"><strong>Track details</strong><button id="closeDetailBtn" class="text-button" aria-label="Close track details">✕</button></div><div class="detail-body"><span id="detailNumber" class="detail-kicker"></span><h2 id="detailTitle"></h2><p id="detailArtist"></p><button id="openOriginalBtn" class="text-button" hidden>Open original track ↗</button><div class="detail-facts"><div><span>Version</span><strong id="detailMix"></strong></div><div><span>Duration</span><strong id="detailDuration"></strong></div><div><span>Import</span><strong id="detailSource"></strong></div></div><h3>Audio match</h3><p id="detailHelp" class="detail-help"></p><div id="candidateList" class="candidate-list"></div><button id="retryTrackBtn" class="button button-secondary full-width" hidden>Retry this track</button></div></aside></div>
+        <div id="summaryBanner" class="summary-banner" hidden></div>
         <details class="activity" id="activityPanel"><summary>Activity <span id="activityCount">0</span></summary><div class="activity-inner"><div id="logConsole" class="log-console" role="log" aria-live="polite"></div><button id="clearLogBtn" class="text-button">Clear activity</button></div></details>
       </main>
     </div>
 
-    <footer class="footer"><div class="progress-block"><div class="progress-track"><div id="globalProgressBar" class="progress-fill"></div></div><div class="progress-label"><span id="progressStats">0 / 0 completed</span><span id="percentText">0%</span></div></div><div class="footer-actions"><button id="openFolderBtn" class="button button-secondary" disabled>Open folder</button><button id="cancelBtn" class="button button-secondary" disabled>Cancel</button><button id="startBtn" class="button button-primary" disabled>Download selected <span aria-hidden="true">↓</span></button></div></footer>
+    <footer class="footer"><div class="progress-block"><div class="progress-track"><div id="globalProgressBar" class="progress-fill"></div></div><div class="progress-label"><span id="progressStats">0 / 0 completed</span><span id="percentText">0%</span></div></div><div class="footer-actions"><button id="retryFailedBtn" class="button button-secondary" hidden>Retry failed</button><button id="openFolderBtn" class="button button-secondary" disabled>Open folder</button><button id="cancelBtn" class="button button-secondary" disabled>Cancel</button><button id="startBtn" class="button button-primary" disabled>Download selected <span aria-hidden="true">↓</span></button></div></footer>
   </div>
+  <div id="restoreDialog" class="dialog-backdrop" hidden><div class="restore-dialog" role="dialog" aria-modal="true" aria-labelledby="restoreTitle"><span class="detail-kicker">UNFINISHED SESSION</span><h2 id="restoreTitle">Continue where you left off?</h2><p id="restoreDescription"></p><div class="dialog-actions"><button id="discardSessionBtn" class="button button-secondary">Discard session</button><button id="resumeSessionBtn" class="button button-primary">Restore queue</button></div></div></div>
   <script src="app.js"></script>
 </body>
 </html>

@@ -8,6 +8,7 @@ test('link sources and pasted tracklists are recognized', () => {
   assert.equal(detectInputType('https://open.spotify.com/playlist/abc'), 'spotify');
   assert.equal(detectInputType('soundcloud.com/user/track'), 'soundcloud');
   assert.equal(detectInputType('https://music.youtube.com/watch?v=abc'), 'youtube');
+  assert.equal(detectInputType('https://music.apple.com/us/playlist/example/pl.123'), 'apple');
   assert.equal(detectInputType('Artist - Song'), 'text');
 });
 
@@ -60,6 +61,13 @@ test('SoundCloud public embed metadata becomes a reviewable track', () => {
   assert.equal(result.needsMetadata, false);
   assert.equal(result.durationSec, 0);
   assert.equal(result.soundcloudId, '1576004935');
+});
+
+test('YouTube title ending with channel artist is not reversed', () => {
+  const track = normalizeTrack({ title: 'BELLAKEO (Video Oficial) - Peso Pluma, Anitta', channel: 'Peso Pluma', id: 'example', duration: 235 }, 'youtube', 'https://youtube.com/watch?v=example');
+  assert.equal(track.title, 'BELLAKEO');
+  assert.equal(track.artist, 'Peso Pluma, Anitta');
+  assert.equal(track.durationSec, 235);
 });
 
 test('download and transcoding engines are present', async () => {

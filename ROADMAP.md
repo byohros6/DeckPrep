@@ -1,6 +1,6 @@
 # DeckPrep roadmap
 
-This is the running feature log. The current review build is **1.4.0-beta.2**; public links and a reviewable queue are the priority.
+This is the running feature log. The current review build is **1.4.0-beta.3**; public links and a reviewable queue are the priority.
 
 ## In the 1.4 upgrade
 
@@ -19,5 +19,6 @@ This is the running feature log. The current review build is **1.4.0-beta.2**; p
 - Additional export formats and quality choices.
 - Duplicate detection across sessions and destination folders.
 - DJ library export formats and optional BPM/key analysis.
+- Optional interoperability with playlist-transfer services if they provide a supported integration. Pasted tracklists already provide a manual bridge.
 
 Ideas stay here until their behavior, constraints, and release priority are decided.

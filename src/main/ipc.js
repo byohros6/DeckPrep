@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { checkBinaries } from './engine/binaryManager.js';
 import { parseInput, fetchTrackDetails } from './engine/sources.js';
 import { DownloadQueue, verifyMp3File } from './engine/downloadQueue.js';
-import { findAudioMatches } from './engine/matching.js';
+import { findAudioMatches, rankCandidates } from './engine/matching.js';
 import { readSession, saveSession, clearSession } from './sessionStore.js';
 
 let activeQueue = null;
@@ -43,6 +43,7 @@ export function registerIpcHandlers(mainWindow) {
     if (activeQueue || activeMetadata || activeMatching || activeParse) return { success: false, error: 'Wait for the current task first' };
     const session = await readSession();
     if (!session) return { success: false, error: 'No saved session' };
+    let reusedMatches = 0;
     session.tracks = session.tracks.map((track, index) => {
       const restored = { ...track, index: index + 1 };
       if (['done', 'skipped'].includes(restored.status)) {
@@ -50,11 +51,21 @@ export function registerIpcHandlers(mainWindow) {
         catch { restored.status = 'pending'; restored.outputPath = null; }
       }
       if (['resolving', 'searching', 'downloading', 'transcoding', 'tagging'].includes(restored.status)) restored.status = 'pending';
+      if (!restored.directUrl && !restored.matchUrl && restored.candidates?.length) {
+        const ranked = rankCandidates(restored, restored.candidates);
+        restored.candidates = ranked.candidates;
+        if (ranked.chosen) {
+          restored.matchUrl = ranked.chosen.url;
+          restored.matchState = 'matched';
+          restored.matchError = null;
+          reusedMatches++;
+        }
+      }
       return restored;
     });
     parsedTracks = session.tracks.map(track => ({ ...track }));
     selectedDestination = session.destinationDir && fs.existsSync(session.destinationDir) ? session.destinationDir : null;
-    return { success: true, session: { ...session, destinationDir: selectedDestination || '' } };
+    return { success: true, session: { ...session, destinationDir: selectedDestination || '', reusedMatches } };
   });
   ipcMain.handle('get-system-info', () => {
     const cpuCores = os.cpus()?.length || 4;
@@ -133,8 +144,9 @@ export function registerIpcHandlers(mainWindow) {
     activeMetadata.controller.abort();
     return { success: true };
   });
-  ipcMain.handle('find-matches', (_, selectedIndices) => {
+  ipcMain.handle('find-matches', (_, request) => {
     if (activeParse || activeMetadata || activeMatching || activeQueue) return { success: false, error: 'Another task is already running' };
+    const selectedIndices = Array.isArray(request) ? request : request?.indices;
     if (!Array.isArray(selectedIndices) || !selectedIndices.every(Number.isSafeInteger)) return { success: false, error: 'Select valid tracks first' };
     const ids = new Set(selectedIndices);
     const tracks = parsedTracks.filter(track => ids.has(track.index) && !track.directUrl && !track.matchUrl);
@@ -160,11 +172,13 @@ export function registerIpcHandlers(mainWindow) {
         send('match-progress', { track, completed: job.completed, total: job.total, errors: job.errors });
       }
     };
-    Promise.all(Array.from({ length: Math.min(3, tracks.length) }, worker)).finally(() => {
+    const requestedConcurrency = Math.max(1, Math.min(12, Number(request?.concurrency) || 4));
+    const workers = Math.min(tracks.length, 6, Math.max(1, Math.round(requestedConcurrency * 0.75)));
+    Promise.all(Array.from({ length: workers }, worker)).finally(() => {
       if (activeMatching === job) activeMatching = null;
       send('match-completed', { completed: job.completed, total: job.total, errors: job.errors, cancelled: job.controller.signal.aborted });
     });
-    return { success: true, total: tracks.length };
+    return { success: true, total: tracks.length, workers };
   });
   ipcMain.handle('cancel-matches', () => {
     if (!activeMatching) return { success: false, error: 'No match search is running' };

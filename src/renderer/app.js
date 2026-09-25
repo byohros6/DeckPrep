@@ -23,6 +23,7 @@ let collectionSource = '';
 let collectionInfo = {};
 let metadataProgress = { completed: 0, total: 0 };
 let matchProgress = { completed: 0, total: 0 };
+let matchWorkers = 3;
 let activeDetailIndex = null;
 let sessionSaveTimer = null;
 let sessionPromptOpen = false;
@@ -174,6 +175,8 @@ function displayStatus(track) {
   if (track.needsMetadata) return 'Details needed';
   if (track.matchError) return 'Match failed';
   if (!track.directUrl && !track.matchUrl) return track.candidates?.length ? 'Review match' : 'Find match';
+  if (track.status === 'pending' && track.matchState === 'matched') return 'Auto matched';
+  if (track.status === 'pending' && track.matchState === 'chosen') return 'Match chosen';
   return track.status === 'pending' ? 'Ready' : track.status;
 }
 
@@ -184,6 +187,7 @@ function statusClass(track) {
   if (track.needsMetadata) return 'needs-details';
   if (track.matchError) return 'error';
   if (!track.directUrl && !track.matchUrl) return 'needs-details';
+  if (track.status === 'pending' && track.matchUrl) return 'matched';
   return track.status;
 }
 
@@ -246,12 +250,13 @@ function updateMatchingBar() {
   matchingBar.hidden = !needed.length && !isFindingMatches;
   if (isFindingMatches) {
     byId('matchingHeadline').textContent = `Searching audio ${matchProgress.completed} / ${matchProgress.total}`;
-    byId('matchingMessage').textContent = 'Comparing title, artist, version and available duration. Uncertain results need your review.';
+    byId('matchingMessage').textContent = `Checking SoundCloud and YouTube for up to ${matchWorkers} tracks at once. Close matches are selected automatically.`;
   } else {
     const review = needed.filter(track => track.candidates?.length).length;
+    const automatic = selectedTracks().filter(track => track.matchState === 'matched' && track.matchUrl).length;
     byId('matchingHeadline').textContent = `${needed.length} selected ${needed.length === 1 ? 'track needs' : 'tracks need'} a match`;
     byId('matchingMessage').textContent = review
-      ? `${review} ${review === 1 ? 'track has' : 'tracks have'} candidates to review. Click a track to choose its recording.`
+      ? `${automatic ? `${automatic} matched automatically. ` : ''}${review} ${review === 1 ? 'track has' : 'tracks have'} candidates to review. Click a track to choose its recording.`
       : 'Find recordings on SoundCloud and YouTube before downloading.';
   }
   findMatchesBtn.hidden = isFindingMatches;
@@ -305,7 +310,8 @@ function renderDetail(track) {
   byId('detailSource').textContent = track.source === 'apple' ? 'Apple Music' : track.source === 'youtube' ? 'YouTube' : track.source === 'soundcloud' ? 'SoundCloud' : track.source === 'spotify' ? 'Spotify' : 'Tracklist';
   const help = track.errorMessage || track.metadataError || track.matchError;
   byId('detailHelp').textContent = help || (track.directUrl ? 'Uses the original audio link.'
-    : track.matchUrl ? 'A recording has been selected.' : track.candidates?.length ? 'Choose the recording that matches this track.' : 'Find audio matches to see your options.');
+    : track.matchUrl && track.matchState === 'matched' ? 'A close match was selected automatically. Open it to check or choose another.'
+      : track.matchUrl ? 'You chose this recording.' : track.candidates?.length ? 'Choose the recording that matches this track.' : 'Find audio matches to see your options.');
   const list = byId('candidateList');
   list.replaceChildren();
   for (const candidate of track.candidates || []) {
@@ -514,8 +520,10 @@ findMatchesBtn.addEventListener('click', async () => {
   analyzeBtn.disabled = true;
   renderTrackTable(); updateControls();
   try {
-    const result = await window.djAPI.findMatches(indices);
+    const result = await window.djAPI.findMatches(indices, Number(byId('concurrencyRange').value));
     if (!result.success) throw new Error(result.error);
+    matchWorkers = result.workers;
+    updateMatchingBar();
   } catch (err) {
     isFindingMatches = false;
     analyzeBtn.disabled = false;
@@ -539,8 +547,15 @@ window.djAPI.onMatchCompleted(summary => {
   cancelMatchesBtn.disabled = false;
   renderTrackTable(); updateControls(); saveQueueSoon();
   const review = selectedTracks().filter(track => !track.directUrl && !track.matchUrl && track.candidates?.length).length;
+  const automatic = selectedTracks().filter(track => track.matchState === 'matched' && track.matchUrl).length;
+  const banner = byId('summaryBanner');
+  banner.hidden = false;
+  banner.classList.toggle('has-errors', summary.errors > 0);
+  banner.textContent = summary.cancelled
+    ? `Search stopped · ${summary.completed} checked · ${automatic} matched automatically`
+    : `${automatic} matched automatically · ${review} need review · ${summary.errors} searches failed`;
   appendLog(summary.cancelled ? `Match search stopped after ${summary.completed} tracks.`
-    : `Match search finished: ${review} need review, ${summary.errors} could not be found.`, summary.errors ? 'err-msg' : 'done-msg');
+    : `Match search finished: ${automatic} matched automatically, ${review} need review, ${summary.errors} could not be found.`, summary.errors ? 'err-msg' : 'done-msg');
 });
 
 byId('browseBtn').addEventListener('click', async () => {
@@ -651,7 +666,7 @@ byId('resumeSessionBtn').addEventListener('click', async () => {
     sessionPromptOpen = false;
     setRestoreDialogOpen(false);
     renderTrackTable(); updateControls(); saveQueueSoon();
-    appendLog(`Restored ${loadedTracks.length} tracks. Review and click Download selected when ready.`, 'sys-msg');
+    appendLog(`Restored ${loadedTracks.length} tracks${session.reusedMatches ? `; ${session.reusedMatches} existing candidates matched automatically` : ''}. Review before downloading.`, 'sys-msg');
   } catch (err) {
     appendLog(`Could not restore session: ${err.message}`, 'err-msg');
     button.disabled = false;

@@ -34,7 +34,7 @@
         </select>
         <p id="crateModeHint" class="hint crate-hint">All tracks stay full length in the chosen folder.</p>
         <div class="speed-settings"><label for="speedMode" class="field-label">Processing speed</label><select id="speedMode"><option value="balanced">Balanced · recommended</option><option value="gentle">Lower computer usage</option><option value="fast">Faster · more computer usage</option><option value="custom">Custom</option></select><p id="speedHint" class="hint">A balanced number of tracks at once for this computer.</p></div>
-        <details class="settings" id="advancedSettings"><summary>Advanced settings</summary><div class="settings-content"><label for="concurrencyRange" class="field-label">Tracks at once <strong id="concurrencyVal">4</strong></label><input type="number" id="concurrencyRange" min="1" max="12" step="1" value="4"><p class="hint">This is the number of separate tracks processed in parallel. It is not an audio format or a CPU thread count.</p><p class="hint">MP3 · 320 kbps · 44.1 kHz</p></div></details>
+        <details class="settings" id="advancedSettings"><summary>Advanced settings</summary><div class="settings-content"><label for="concurrencyRange" class="field-label">Tracks at once <strong id="concurrencyVal">4</strong></label><input type="number" id="concurrencyRange" min="1" max="12" step="1" value="4"><p class="hint">Separate tracks processed in parallel, not CPU threads. Matching may check two sources for a track and limits parallel searches to avoid overload.</p><p class="hint">MP3 · 320 kbps · 44.1 kHz</p></div></details>
       </aside>
 
       <main class="main-panel">

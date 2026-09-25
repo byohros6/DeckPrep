@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.0-beta.3
+
+- Made matching faster with YouTube-first search and SoundCloud fallback, plus bounded parallel searches tied to the processing-speed setting.
+- Improved match scoring for artist names in titles, remixes, duration, and alternate uploads. Close matches are accepted automatically; wrong versions and covers stay for review.
+- Rescored saved candidate lists on session restore without new searches, and made automatic selections and remaining review counts visible.
+
 ## 1.4.0-beta.2
 
 - Reworked the saved-session prompt with playlist details, selection and completion counts, and a clearer review action.

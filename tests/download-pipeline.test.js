@@ -8,7 +8,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import NodeID3 from 'node-id3';
 import { resolveBinary } from '../src/main/engine/binaryManager.js';
-import { DownloadQueue } from '../src/main/engine/downloadQueue.js';
+import { DownloadQueue, downloadError } from '../src/main/engine/downloadQueue.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -40,12 +40,25 @@ test('an audio URL downloads, transcodes, tags, and keeps source intact', async 
     assert.deepEqual(fs.readFileSync(source), original);
     const exported = fs.readdirSync(output).filter(name => name.endsWith('.mp3'));
     assert.equal(exported.length, 1);
-    assert.match(exported[0], /^007\./);
+    assert.equal(exported[0], 'Test Track.mp3');
     const tags = NodeID3.read(path.join(output, exported[0]));
     assert.equal(tags.artist, 'Test Artist');
     assert.equal(tags.title, 'Test Track');
+    assert.equal(tags.album, undefined);
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('same song titles get a safe suffix instead of overwriting another export', () => {
+  const queue = new DownloadQueue({ destinationDir: 'C:\\Music', concurrency: 2 });
+  const first = queue.destinationFor({ artist: 'Stefano Noferini', title: 'One Love (Original Mix)' });
+  const second = queue.destinationFor({ artist: 'Stefano Noferini', title: 'One Love (Original Mix)' });
+  assert.equal(first.outputPath, 'C:\\Music\\One Love (Original Mix).mp3');
+  assert.equal(second.outputPath, 'C:\\Music\\One Love (Original Mix) (Stefano Noferini).mp3');
+});
+
+test('protected source failures explain that another recording is needed', () => {
+  assert.match(downloadError(new Error('ERROR: This video is DRM protected')), /protected and cannot be exported/i);
 });

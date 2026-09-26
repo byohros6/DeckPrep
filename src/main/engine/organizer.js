@@ -6,15 +6,13 @@ import { sanitizeFileName } from './transcoder.js';
  */
 export function buildDestinationPath({
   baseDir,
-  mode = 'flat', // 'flat' | 'partitioned' | 'sampler'
-  index,
+  mode = 'flat', // 'flat' | 'artist' | 'genre' | legacy 'partitioned' | 'sampler'
   artist,
   title,
   mix,
   genre,
   ext = '.mp3'
 }) {
-  const padIndex = String(index).padStart(3, '0');
   let cleanA = sanitizeFileName(artist || 'Unknown Artist');
   if (cleanA.length > 60) cleanA = cleanA.substring(0, 60).trim();
 
@@ -30,19 +28,15 @@ export function buildDestinationPath({
   // Clean trailing dots and spaces from cleanT before appending extension
   cleanT = cleanT.replace(/[\s.]+$/, '');
 
-  // Standard collision-free naming: "001. Artist - Title (Mix).mp3"
-  const fileName = `${padIndex}. ${cleanA} - ${cleanT}${ext}`;
+  const fileName = `${cleanT}${ext}`;
 
   if (mode === 'sampler') {
     return path.join(baseDir, 'DJ Sampler Bank', fileName);
   }
 
-  if (mode === 'partitioned') {
-    // Group either by genre or artist subfolder
-    const rawFolder = (genre && genre.trim()) ? genre.trim() : cleanA;
-    const subfolder = sanitizeFileName(rawFolder);
-    return path.join(baseDir, subfolder, fileName);
-  }
+  if (mode === 'artist') return path.join(baseDir, cleanA, fileName);
+  if (mode === 'genre') return path.join(baseDir, sanitizeFileName(genre?.trim() || 'Unknown Genre'), fileName);
+  if (mode === 'partitioned') return path.join(baseDir, sanitizeFileName(genre?.trim() || cleanA), fileName);
 
   // Default: Consolidated Flat Master
   return path.join(baseDir, fileName);

@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.4.0-beta.6
+
+- Added an **Open folder when finished** option near the destination. It is off by default, saved across sessions, and only opens the destination after a successful batch when enabled.
+- Corrected the saved-session completion count to include only currently selected tracks.
+- Kept the user's current row selections intact while download progress updates arrive, so the queue and progress counts stay accurate.
+- Reset the previous queue's search and filter after importing a new source, so the new tracks are visible immediately.
+- Show unfinished tracks explicitly after cancellation, with progress reflecting the work that actually completed.
+- Closed track details when a search or filter hides that row, and clarified when an alternative recording has been chosen.
+- Manually checked the packaged app with the 429-track SoundCloud playlist: queue restore, selection, duplicate handling, all four folder layouts, successful exports, protected-source failure and alternate selection, and cancellation.
+
+## 1.4.0-beta.5
+
+- Export filenames now use the song title without a playlist number or artist prefix; colliding titles get an artist suffix instead of overwriting files.
+- SoundCloud playlist names no longer fill the Album tag. Unknown albums remain blank, including in restored queues.
+- Split the ambiguous folder choice into artist and genre layouts, with an exact path preview for every layout.
+- Mark repeated artist/title/version entries as duplicates and leave later copies unchecked by default.
+- Show processed, downloaded, and failed counts separately. Protected SoundCloud recordings receive a clear error and an alternative-recording search in track details.
+
+## 1.4.0-beta.4
+
+- Fixed the portable Windows build failing every export because FFmpeg was resolved inside the app archive rather than at its executable unpacked path.
+- Added a packaged-app check that launches both bundled engines and exports a sample track, so packaging failures fail Windows CI before release.
+
+## 1.4.0-beta.3
+
+- Made matching faster with YouTube-first search and SoundCloud fallback, plus bounded parallel searches tied to the processing-speed setting.
+- Improved match scoring for artist names in titles, remixes, duration, and alternate uploads. Close matches are accepted automatically; wrong versions and covers stay for review.
+- Rescored saved candidate lists on session restore without new searches, and made automatic selections and remaining review counts visible.
+
+## 1.4.0-beta.2
+
+- Reworked the saved-session prompt with playlist details, selection and completion counts, and a clearer review action.
+- Made loading visible immediately, removed the redundant success badge, and improved queue selection controls and playlist card affordance.
+- Added processing-speed presets with an advanced exact track-count setting; clarified what the sampler folder does.
+- Made Spotify public-preview limits explicit for every playlist and separated dash-form remix names into the Mix/Edit column.
+
+## 1.4.0-beta.1
+
+- Added public Apple Music playlist, album, and song import and clearer source details for all four core platforms.
+- Added queue search, filters, bulk selection, and a focused track detail panel.
+- Added SoundCloud and YouTube candidate matching with manual review when results are uncertain.
+- Added saved queue recovery with a resume-or-discard prompt, failed-track retry selection, and batch summaries.
+- Added output MP3 checks, Windows CI packaging, and an in-repository roadmap.
+- Added a DeckPrep Windows application icon and refreshed the repository screenshots.
+
 ## 1.3.1
 
 - Fetches SoundCloud track details through the public oEmbed endpoint instead of running a full extractor for every track.

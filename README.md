@@ -1,39 +1,62 @@
 # DeckPrep
 
-DeckPrep is a Windows desktop app for preparing DJ crates from links and pasted tracklists. Paste a track, album, or playlist link, several links on separate lines, or a list of artist and title lines. Review the queue, choose a destination, and download MP3 files with metadata and artwork.
+DeckPrep is a Windows desktop workspace for preparing DJ crates from public music links and pasted tracklists. Load a playlist, review the tracks and audio matches, choose what to export, and follow each file through to a tagged MP3. The queue can be restored after an interrupted session.
 
-SoundCloud playlists show artwork and creator details, then automatically fill track titles and artists using SoundCloud's public oEmbed metadata. No audio downloads during this review. Track length is shown when available; oEmbed does not provide it for every track. You can stop the lookup, retry failed rows, and uncheck tracks you do not want. **Download selected** becomes available once every selected track has details and a destination is chosen. Other sources still offer **Fetch details** when needed.
+**Current version:** 1.4.0-beta.6 · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md)
 
-Spotify links supply track metadata. DeckPrep finds matching audio from available sources; it does not extract audio from Spotify. Use sources and audio according to their terms and permissions.
+![Playlist review in DeckPrep](docs/images/playlist-review.png)
 
-## Features
+## How it works
 
-- Single links, multiple links, and pasted tracklists.
-- Metadata-only playlist review and per-track selection before download.
-- Mix and edit names retained in search and filenames.
-- Duration comparison to help reject the wrong version when source timing is available.
-- MP3 output at 320 kbps and 44.1 kHz stereo. Re-encoding cannot improve source quality.
-- ID3 tags and embedded artwork when metadata is available.
-- Flat crates, artist or genre folders, and sampler output.
-- Concurrent processing, per-track status, cancellation, and skip-existing behavior.
+1. Paste a public track, album, or playlist link, several links on separate lines, or an artist–title tracklist. Click **Load tracks**.
+2. Search and filter the queue, inspect a track, and uncheck anything you do not want. **Select shown** selects only rows in the current search/filter; **Clear all** deselects the whole queue. Repeated artist/title/version entries are marked as possible duplicates, with later copies unchecked by default. SoundCloud playlists fill in track titles and artists before audio downloads start.
+3. For catalog-only imports and tracklists, click **Find matches**. DeckPrep searches YouTube first, then SoundCloud when a track still needs a match. It compares artist, title, version, and available duration, accepts close matches automatically, and leaves uncertain versions for review.
+4. Choose a destination and click **Download selected**. Watch per-track status, review the batch summary, and select failed rows to retry. If a source recording is protected, open its track details to find another recording; choose the version you want before exporting.
+   Turn on **Open folder when finished** beside the destination if you want File Explorer to appear after a successful batch. It is off by default; **Open folder** remains available at the bottom of the app.
+5. If you close the app before finishing, it asks whether to restore or discard the saved queue when reopened. Restoring does not start downloads.
 
-## Develop
+![Choosing an uncertain match](docs/images/match-review.png)
 
-```sh
-npm install
+## Public link support
+
+| Source | Import | Audio handling |
+| --- | --- | --- |
+| SoundCloud | Public tracks and playlists; fast title, artist, and artwork review | Uses the original link when available |
+| YouTube / YouTube Music | Public videos and playlists | Uses the original video link |
+| Spotify | Public embed metadata for tracks, albums, and playlists | Finds candidate recordings on supported audio sources; does not extract Spotify streams |
+| Apple Music | Public song, album, and playlist page metadata | Finds candidate recordings on supported audio sources; does not extract Apple Music streams |
+| Pasted tracklist | Artist–title lines, with optional mix and duration | Finds candidate recordings for review |
+
+Public pages can change or expose only part of a playlist. DeckPrep reports an incomplete Apple Music import and warns that Spotify's public preview cannot verify the full playlist length. Paste a complete tracklist if tracks are missing. Private playlists and account connections are planned for later. SoundCloud's quick public metadata does not always include duration.
+
+## Export
+
+- MP3 at 320 kbps and 44.1 kHz stereo, with ID3 tags and artwork when available. Encoding cannot improve the quality of its source.
+- Files are named `Song Title.mp3` or `Song Title (Mix).mp3`, without playlist numbers. If two different tracks would use the same name, DeckPrep adds the artist as a suffix. Existing files with matching artist and title are skipped.
+- **No subfolders:** `Destination\Song Title.mp3`. **Folders by artist:** `Destination\Artist\Song Title.mp3` (missing names use `Unknown Artist`). **Folders by genre:** `Destination\Genre\Song Title.mp3`; DeckPrep reads genre during export when available and uses `Unknown Genre` when the source has none. **DJ Sampler Bank subfolder:** `Destination\DJ Sampler Bank\Song Title.mp3`, still a full-length song without pads or cue points.
+- The Album tag is filled only when the source supplies a real album. A playlist name is not used as the album.
+- **Balanced**, **Lower computer usage**, and **Faster** processing presets choose how many separate tracks run at once. Advanced settings allow a specific number. This is not a CPU thread count.
+- Concurrent downloads, per-track errors, cancellation, existing-file checks, and retry selection.
+- Match searches use the processing-speed setting with a bounded number of parallel jobs. Saved candidate lists are rescored when restoring a session, without searching again.
+- Original source files remain untouched; output is checked before being marked complete.
+
+## Develop on Windows
+
+Requires Node.js 22 or newer.
+
+```powershell
+npm ci
 npm run setup:engine
 npm start
 ```
 
-`setup:engine` fetches the official Windows `yt-dlp` executable. FFmpeg comes from the `ffmpeg-static` dependency, or from a local `bin/ffmpeg.exe`.
+`setup:engine` downloads a pinned, checksum-verified `yt-dlp` executable. FFmpeg is provided by `ffmpeg-static`.
 
-## Test and package
-
-```sh
+```powershell
 npm test
 npm run dist:portable
 ```
 
-The portable executable is created under `dist/`. The build bundles `yt-dlp` and FFmpeg; run `npm run setup:engine` before packaging on a fresh checkout.
+The portable executable is written to `dist/`. Pull requests run the Windows test and packaging workflow. Release builds are versioned in `package.json` and recorded in the changelog; beta builds use `1.4.0-beta.N` until the 1.4.0 release is ready.
 
-DeckPrep is independent of Spotify, SoundCloud, YouTube, and DJ hardware or software vendors. It is not affiliated with or endorsed by them.
+DeckPrep is independent of the named music and DJ software services. Use links and audio according to the applicable terms and permissions.

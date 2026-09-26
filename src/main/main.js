@@ -1,8 +1,41 @@
 import { app, BrowserWindow, Menu } from 'electron';
 import path from 'path';
 import fs from 'node:fs';
+import os from 'node:os';
+import http from 'node:http';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { fileURLToPath } from 'url';
 import { registerIpcHandlers } from './ipc.js';
+import { resolveBinary } from './engine/binaryManager.js';
+import { DownloadQueue } from './engine/downloadQueue.js';
+
+const execFileAsync = promisify(execFile);
+
+async function checkPackagedExport(ffmpeg) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'deckprep-packaged-check-'));
+  const source = path.join(directory, 'source.mp3');
+  const destination = path.join(directory, 'output');
+  let server;
+  try {
+    fs.mkdirSync(destination);
+    await execFileAsync(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2', source], { timeout: 10000 });
+    server = http.createServer((_, response) => {
+      response.writeHead(200, { 'content-type': 'audio/mpeg' });
+      fs.createReadStream(source).pipe(response);
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const summary = await new Promise(resolve => {
+      const queue = new DownloadQueue({ destinationDir: destination, concurrency: 1, onAllCompleted: resolve });
+      queue.load([{ index: 1, artist: 'DeckPrep', title: 'Package check', directUrl: `http://127.0.0.1:${server.address().port}/source.mp3` }]);
+      queue.start();
+    });
+    if (summary.completed !== 1 || summary.errors) throw new Error('The packaged app could not complete an audio export');
+  } finally {
+    if (server) await new Promise(resolve => server.close(resolve));
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -163,7 +196,24 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  const engineCheckArg = process.argv.find(arg => arg.startsWith('--check-engines='));
+  if (!engineCheckArg) return createWindow();
+  const resultPath = engineCheckArg.slice('--check-engines='.length);
+  try {
+    const ffmpeg = await resolveBinary('ffmpeg');
+    const ytDlp = await resolveBinary('yt-dlp');
+    if (!ffmpeg || !ytDlp) throw new Error('A bundled engine is missing');
+    await execFileAsync(ffmpeg, ['-version'], { timeout: 10000 });
+    await execFileAsync(ytDlp, ['--version'], { timeout: 10000 });
+    await checkPackagedExport(ffmpeg);
+    fs.writeFileSync(resultPath, JSON.stringify({ success: true, ffmpeg, ytDlp, export: true }));
+    app.exit(0);
+  } catch (error) {
+    fs.writeFileSync(resultPath, JSON.stringify({ success: false, error: error.message }));
+    app.exit(1);
+  }
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

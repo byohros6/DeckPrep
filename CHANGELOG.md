@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0-beta.4
+
+- Fixed the portable Windows build failing every export because FFmpeg was resolved inside the app archive rather than at its executable unpacked path.
+- Added a packaged-app check that launches both bundled engines and exports a sample track, so packaging failures fail Windows CI before release.
+
 ## 1.4.0-beta.3
 
 - Made matching faster with YouTube-first search and SoundCloud fallback, plus bounded parallel searches tied to the processing-speed setting.

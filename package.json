@@ -1,6 +1,6 @@
 {
   "name": "deckprep",
-  "version": "1.4.0-beta.3",
+  "version": "1.4.0-beta.4",
   "description": "Prepare DJ crates from music links and tracklists",
   "main": "src/main/main.js",
   "type": "module",

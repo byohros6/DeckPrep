@@ -2,7 +2,7 @@
 
 DeckPrep is a Windows desktop workspace for preparing DJ crates from public music links and pasted tracklists. Load a playlist, review the tracks and audio matches, choose what to export, and follow each file through to a tagged MP3. The queue can be restored after an interrupted session.
 
-**Current version:** 1.4.0-beta.3 · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md)
+**Current version:** 1.4.0-beta.4 · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md)
 
 ![Playlist review in DeckPrep](docs/images/playlist-review.png)
 

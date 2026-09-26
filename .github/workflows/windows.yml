@@ -19,6 +19,16 @@ jobs:
       - run: npm test
       - run: npm run build:icon
       - run: npm run dist:portable
+      - name: Export a sample with the portable app
+        shell: pwsh
+        run: |
+          $result = Join-Path $env:RUNNER_TEMP 'deckprep-engines.json'
+          $portable = (Get-ChildItem dist -Filter 'DeckPrep-Portable-*.exe' | Select-Object -First 1).FullName
+          if (-not $portable) { throw 'Portable executable is missing' }
+          $process = Start-Process -FilePath $portable -ArgumentList "--check-engines=$result" -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0 -or -not (Test-Path $result)) { throw 'Portable export check failed to run' }
+          $check = Get-Content $result -Raw | ConvertFrom-Json
+          if (-not $check.success -or -not $check.export) { throw $check.error }
       - uses: actions/upload-artifact@v4
         with:
           name: deckprep-portable-${{ github.sha }}

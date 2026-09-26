@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0-beta.5
+
+- Export filenames now use the song title without a playlist number or artist prefix; colliding titles get an artist suffix instead of overwriting files.
+- SoundCloud playlist names no longer fill the Album tag. Unknown albums remain blank, including in restored queues.
+- Split the ambiguous folder choice into artist and genre layouts, with an exact path preview for every layout.
+- Mark repeated artist/title/version entries as duplicates and leave later copies unchecked by default.
+- Show processed, downloaded, and failed counts separately. Protected SoundCloud recordings receive a clear error and an alternative-recording search in track details.
+
 ## 1.4.0-beta.4
 
 - Fixed the portable Windows build failing every export because FFmpeg was resolved inside the app archive rather than at its executable unpacked path.

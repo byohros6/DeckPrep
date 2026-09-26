@@ -9,8 +9,17 @@ import { transcodeToMp3 } from './transcoder.js';
 import { tagMp3File } from './tagger.js';
 import { buildDestinationPath } from './organizer.js';
 import { normalizeTrack } from './sources.js';
+import { cleanArtist, cleanTitle } from './metadata.js';
+import { sanitizeFileName } from './transcoder.js';
+import NodeID3 from 'node-id3';
 
 const execFileAsync = promisify(execFile);
+
+export function downloadError(error) {
+  if (/DRM protected/i.test(error.message)) return 'This source is protected and cannot be exported. Open it or find another recording.';
+  if (/hls_mp3 format not found/i.test(error.message)) return 'This source has no audio format available for export. Open it or find another recording.';
+  return error.message;
+}
 
 export function verifyMp3File(filePath) {
   const stat = fs.statSync(filePath);
@@ -38,11 +47,13 @@ export class DownloadQueue {
     this.abortController = new AbortController();
     this.isCancelled = false;
     this.batchFinished = false;
+    this.reservedPaths = new Set();
   }
 
   load(tracks) {
-    this.tracks = tracks.map((track, index) => ({ ...track, index: track.index || index + 1, status: 'pending' }));
+    this.tracks = tracks.map((track, index) => ({ ...track, index: track.index || index + 1, status: 'pending', errorMessage: null }));
     this.nextIndex = 0;
+    this.reservedPaths.clear();
   }
 
   start() {
@@ -67,13 +78,41 @@ export class DownloadQueue {
     this.activeWorkers++;
     this.processTrack(track).catch(err => {
       track.status = this.isCancelled ? 'cancelled' : 'error';
-      track.errorMessage = err.message;
-      if (!this.isCancelled) this.onLog(`Error: ${track.artist} - ${track.title}: ${err.message}`);
+      track.errorMessage = downloadError(err);
+      if (!this.isCancelled) this.onLog(`Error: ${track.artist} - ${track.title}: ${track.errorMessage}`);
     }).finally(() => {
       this.activeWorkers--;
       this.onTrackCompleted(track);
       this.spawnWorker();
     });
+  }
+
+  destinationFor(track) {
+    const base = buildDestinationPath({
+      baseDir: this.destinationDir, mode: this.mode,
+      artist: track.artist, title: track.title, mix: track.mix, genre: track.genre, ext: '.mp3'
+    });
+    const parsed = path.parse(base);
+    const artist = sanitizeFileName(track.artist || 'Unknown Artist').slice(0, 40).trim();
+    for (let number = 0; number < 100; number++) {
+      const suffix = number === 0 ? '' : number === 1 ? ` (${artist})` : ` (${artist} ${number})`;
+      const outputPath = path.join(parsed.dir, `${parsed.name}${suffix}${parsed.ext}`);
+      const key = outputPath.toLowerCase();
+      if (this.reservedPaths.has(key)) continue;
+      if (fs.existsSync(outputPath)) {
+        try { verifyMp3File(outputPath); }
+        catch { throw new Error(`An output file already exists but appears incomplete: ${path.basename(outputPath)}`); }
+        const tags = NodeID3.read(outputPath);
+        const sameTitle = cleanTitle(tags.title).toLowerCase() === cleanTitle(track.title).toLowerCase();
+        const sameArtist = cleanArtist(tags.artist).toLowerCase() === cleanArtist(track.artist).toLowerCase();
+        if (!sameTitle || !sameArtist) continue;
+        this.reservedPaths.add(key);
+        return { outputPath, exists: true };
+      }
+      this.reservedPaths.add(key);
+      return { outputPath, exists: false };
+    }
+    throw new Error('Too many files with this song title in the destination folder');
   }
 
   async processTrack(track) {
@@ -96,14 +135,21 @@ export class DownloadQueue {
     if (track.source === 'soundcloud' && track.durationSec > 0 && track.durationSec <= 35 && this.mode !== 'sampler') {
       throw new Error('SoundCloud supplied only a short preview for this track');
     }
-    const outputPath = buildDestinationPath({
-      baseDir: this.destinationDir, mode: this.mode, index: track.index,
-      artist: track.artist, title: track.title, mix: track.mix, genre: track.genre, ext: '.mp3'
-    });
+    if (this.mode === 'genre' && !track.genre) {
+      track.status = 'resolving';
+      this.onTrackProgress(track);
+      candidate ||= await resolveAudioCandidate({
+        artist: track.artist, title: track.title, mix: track.mix,
+        targetDurationSec: track.matchUrl && track.matchState !== 'chosen' ? track.durationSec : 0,
+        directUrl: track.matchUrl || track.directUrl, strictDirect: true,
+        signal: this.abortController.signal
+      });
+      if (this.isCancelled) { track.status = 'cancelled'; return; }
+      track.genre = candidate.metadata?.genre || '';
+    }
+    const { outputPath, exists } = this.destinationFor(track);
     track.outputPath = outputPath;
-    if (fs.existsSync(outputPath)) {
-      try { verifyMp3File(outputPath); }
-      catch { throw new Error('An output file already exists but appears incomplete; it was not overwritten'); }
+    if (exists) {
       track.status = 'skipped';
       this.onLog(`Skipped existing output: ${path.basename(outputPath)}`);
       return;

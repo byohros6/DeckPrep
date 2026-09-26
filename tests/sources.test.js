@@ -54,6 +54,7 @@ test('Spotify preview keeps remix details and reports unverified playlist length
     assert.equal(result.tracks[0].title, 'Brighter Days');
     assert.equal(result.tracks[0].mix, 'Marco Lys Remix');
     assert.equal(result.tracks[0].durationSec, 383);
+    assert.equal(result.tracks[0].album, '');
     assert.match(result.warning, /full playlist length is unavailable/i);
   } finally {
     globalThis.fetch = originalFetch;
@@ -66,10 +67,11 @@ test('SoundCloud playlist entries without titles stay in the queue and resolve t
   assert.equal(pending.needsMetadata, true);
   assert.equal(pending.directUrl, url);
   assert.match(pending.title, /hector couto rendher/i);
-  const resolved = normalizeTrack({ webpage_url: url, title: 'Hector Couto, Rendher - Break Down (Dennis Cruz Remix)', artist: 'Hector Couto, Rendher', duration: 342 }, 'soundcloud', url);
+  const resolved = normalizeTrack({ webpage_url: url, title: 'Hector Couto, Rendher - Break Down (Dennis Cruz Remix)', artist: 'Hector Couto, Rendher', duration: 342, genre: 'Tech House' }, 'soundcloud', url);
   assert.equal(resolved.needsMetadata, false);
   assert.equal(resolved.title, 'Break Down (Dennis Cruz Remix)');
   assert.equal(resolved.durationSec, 342);
+  assert.equal(resolved.genre, 'Tech House');
 });
 
 test('SoundCloud public embed metadata becomes a reviewable track', () => {

@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import { registerIpcHandlers } from './ipc.js';
 import { resolveBinary } from './engine/binaryManager.js';
 import { DownloadQueue } from './engine/downloadQueue.js';
+import NodeID3 from 'node-id3';
 
 const execFileAsync = promisify(execFile);
 
@@ -31,6 +32,8 @@ async function checkPackagedExport(ffmpeg) {
       queue.start();
     });
     if (summary.completed !== 1 || summary.errors) throw new Error('The packaged app could not complete an audio export');
+    const exported = path.join(destination, 'Package check.mp3');
+    if (!fs.existsSync(exported) || NodeID3.read(exported).album) throw new Error('The packaged app wrote an unexpected filename or album tag');
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
     fs.rmSync(directory, { recursive: true, force: true });

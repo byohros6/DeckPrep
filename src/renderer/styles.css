@@ -63,7 +63,9 @@ img{-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
 /* Review controls and recovery surface */
 .topbar{padding-right:150px}.engine-status[hidden]{display:none}
 .sidebar{padding-top:16px}.sidebar textarea{height:130px}.divider{margin:19px 0 18px}
-.crate-hint{margin:-8px 0 18px;min-height:15px}
+.path-preview{margin:-7px 0 0;padding:7px 9px;border:1px solid #343b42;background:#15191d;border-radius:3px;color:#d7e7f3;font:11px/1.4 Consolas,monospace;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
+.progress-fill.has-errors{background:#d47c6d}
+.crate-hint{margin:5px 0 18px;min-height:15px}
 .speed-settings{padding:12px 0 10px;border-top:1px solid #383c40}
 .speed-settings select{margin-bottom:0}.speed-settings .hint{margin-top:8px;min-height:30px}
 .settings{margin-top:4px}.settings-content input[type=range]{margin:7px 0 3px}

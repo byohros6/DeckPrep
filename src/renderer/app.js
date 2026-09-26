@@ -50,10 +50,17 @@ function updateSpeed(mode = byId('speedMode').value) {
 
 function updateCrateHint() {
   const mode = byId('crateMode').value;
+  byId('crateModePreview').textContent = mode === 'artist' ? 'Your folder\\Artist\\Song Title.mp3'
+    : mode === 'genre' ? 'Your folder\\Genre\\Song Title.mp3'
+      : mode === 'sampler' ? 'Your folder\\DJ Sampler Bank\\Song Title.mp3'
+        : mode === 'partitioned' ? 'Your folder\\Genre or Artist\\Song Title.mp3'
+        : 'Your folder\\Song Title.mp3';
   byId('crateModeHint').textContent = mode === 'sampler'
-    ? 'Creates a DJ Sampler Bank subfolder. These are full tracks; no pads or cue points are made.'
-    : mode === 'partitioned' ? 'Creates a folder for each genre, or artist when genre is unknown.'
-      : 'Keeps all exported tracks in one folder.';
+    ? 'Full-length songs in one named folder. No sampler pads or cue points.'
+    : mode === 'artist' ? 'Missing artist goes in Unknown Artist.'
+      : mode === 'genre' ? 'Reads genre when the source provides it; otherwise uses Unknown Genre.'
+        : mode === 'partitioned' ? 'Legacy layout: genre folder, or artist if genre is missing.'
+          : 'No subfolders. Matching names get an artist suffix to avoid overwriting.';
 }
 
 function setRestoreDialogOpen(open) {
@@ -149,9 +156,27 @@ byId('restoreArtwork').addEventListener('error', event => { event.target.hidden 
 byId('playlistCard').addEventListener('click', () => window.djAPI.openSourceLink(byId('playlistCard').dataset.url));
 
 function selectedTracks() { return loadedTracks.filter(track => track.selected); }
+
+function markDuplicates(excludeNew = false) {
+  const firstBySong = new Map();
+  let changed = false;
+  for (const track of loadedTracks) {
+    const usable = !track.needsMetadata && track.title && track.artist && track.artist !== '—';
+    const key = usable ? [track.artist, track.title, track.mix || ''].map(value => value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim()).join('|') : '';
+    const first = key ? firstBySong.get(key) : null;
+    const duplicateOf = first || null;
+    if (track.duplicateOf !== duplicateOf) {
+      if (duplicateOf && !track.duplicateOf && excludeNew) track.selected = false;
+      track.duplicateOf = duplicateOf;
+      changed = true;
+    }
+    if (key && !first) firstBySong.set(key, track.index);
+  }
+  return changed;
+}
 function pendingTracks() { return selectedTracks().filter(track => !['done', 'skipped'].includes(track.status)); }
 function detailsNeeded() { return selectedTracks().filter(track => track.needsMetadata); }
-function matchesNeeded() { return selectedTracks().filter(track => !track.needsMetadata && !track.directUrl && !track.matchUrl); }
+function matchesNeeded() { return selectedTracks().filter(track => !track.needsMetadata && (!track.directUrl || track.blockedOriginal) && !track.matchUrl); }
 
 function visibleTracks() {
   const query = byId('queueSearch').value.trim().toLowerCase();
@@ -159,7 +184,7 @@ function visibleTracks() {
   return loadedTracks.filter(track => {
     if (query && !`${track.title} ${track.artist} ${track.mix || ''}`.toLowerCase().includes(query)) return false;
     if (filter === 'selected') return track.selected;
-    if (filter === 'review') return track.needsMetadata || track.matchState === 'review' || (!track.directUrl && !track.matchUrl);
+    if (filter === 'review') return track.needsMetadata || track.matchState === 'review' || ((!track.directUrl || track.blockedOriginal) && !track.matchUrl);
     if (filter === 'failed') return track.status === 'error' || !!track.metadataError || !!track.matchError;
     if (filter === 'done') return ['done', 'skipped'].includes(track.status);
     return true;
@@ -167,14 +192,14 @@ function visibleTracks() {
 }
 
 function displayStatus(track) {
-  if (!track.selected && !isDownloading) return 'Not selected';
+  if (!track.selected && !isDownloading) return track.duplicateOf ? `Duplicate of #${String(track.duplicateOf).padStart(3, '0')}` : 'Not selected';
   if (track.status === 'error') return 'Failed';
-  if (track.status === 'done') return 'Downloaded';
+  if (track.status === 'done') return track.duplicateOf ? 'Downloaded · duplicate' : 'Downloaded';
   if (track.status === 'skipped') return 'Already exists';
   if (track.metadataError) return 'Details failed';
   if (track.needsMetadata) return 'Details needed';
   if (track.matchError) return 'Match failed';
-  if (!track.directUrl && !track.matchUrl) return track.candidates?.length ? 'Review match' : 'Find match';
+  if ((!track.directUrl || track.blockedOriginal) && !track.matchUrl) return track.blockedOriginal ? track.candidates?.length ? 'Review alternative' : 'Find alternative' : track.candidates?.length ? 'Review match' : 'Find match';
   if (track.status === 'pending' && track.matchState === 'matched') return 'Auto matched';
   if (track.status === 'pending' && track.matchState === 'chosen') return 'Match chosen';
   return track.status === 'pending' ? 'Ready' : track.status;
@@ -186,7 +211,7 @@ function statusClass(track) {
   if (track.metadataError) return 'error';
   if (track.needsMetadata) return 'needs-details';
   if (track.matchError) return 'error';
-  if (!track.directUrl && !track.matchUrl) return 'needs-details';
+  if ((!track.directUrl || track.blockedOriginal) && !track.matchUrl) return 'needs-details';
   if (track.status === 'pending' && track.matchUrl) return 'matched';
   return track.status;
 }
@@ -203,7 +228,7 @@ function updateRow(track) {
   const chip = row.cells[6].firstElementChild;
   chip.className = `status-chip ${statusClass(track)}`;
   chip.textContent = displayStatus(track);
-  chip.title = track.errorMessage || track.metadataError || track.matchError || '';
+  chip.title = track.errorMessage || track.metadataError || track.matchError || (track.duplicateOf ? `Same artist, title, and version as track ${track.duplicateOf}. Select it to export both source links.` : '');
   if (activeDetailIndex === track.index) renderDetail(track);
 }
 
@@ -218,7 +243,7 @@ function renderTrackTable() {
       <td>${escapeHtml(track.artist)}</td>
       <td>${escapeHtml(track.mix || '—')}</td>
       <td>${formatDuration(track.durationSec)}</td>
-      <td><span class="status-chip ${statusClass(track)}" title="${escapeHtml(track.errorMessage || track.metadataError || track.matchError || '')}">${escapeHtml(displayStatus(track))}</span></td>
+      <td><span class="status-chip ${statusClass(track)}" title="${escapeHtml(track.errorMessage || track.metadataError || track.matchError || (track.duplicateOf ? `Same song as track ${track.duplicateOf}. Select it to export both.` : ''))}">${escapeHtml(displayStatus(track))}</span></td>
     </tr>`).join('') : `<tr class="empty-row"><td colspan="7"><div class="empty-state">${isLoadingInput ? '<span class="loading-spinner" aria-hidden="true"></span>' : ''}<strong>${isLoadingInput ? 'Reading your link' : loadedTracks.length ? 'No matching tracks' : 'Nothing in the queue'}</strong><span>${isLoadingInput ? 'Connecting to the source and collecting track details.' : loadedTracks.length ? 'Change the search or filter to see more.' : 'Paste links or a tracklist on the left, then load tracks.'}</span></div></td></tr>`;
 }
 
@@ -272,9 +297,10 @@ function updateProgress() {
   const total = isFetchingDetails ? metadataProgress.total : isFindingMatches ? matchProgress.total : selected.length;
   const percent = total ? Math.round(current * 100 / total) : 0;
   byId('globalProgressBar').style.width = `${percent}%`;
+  byId('globalProgressBar').classList.toggle('has-errors', !isFetchingDetails && !isFindingMatches && selected.some(track => track.status === 'error'));
   byId('progressStats').textContent = isFetchingDetails ? `${current} / ${total} details fetched`
-    : isFindingMatches ? `${current} / ${total} matches checked` : `${finished} / ${total} completed`;
-  byId('percentText').textContent = `${percent}%`;
+    : isFindingMatches ? `${current} / ${total} matches checked` : `${finished} / ${total} processed · ${selected.filter(track => track.status === 'done').length} downloaded · ${selected.filter(track => track.status === 'error').length} failed`;
+  byId('percentText').textContent = isFetchingDetails || isFindingMatches ? `${percent}%` : `${percent}% processed`;
 }
 
 function updateControls() {
@@ -309,7 +335,8 @@ function renderDetail(track) {
   byId('detailDuration').textContent = formatDuration(track.durationSec);
   byId('detailSource').textContent = track.source === 'apple' ? 'Apple Music' : track.source === 'youtube' ? 'YouTube' : track.source === 'soundcloud' ? 'SoundCloud' : track.source === 'spotify' ? 'Spotify' : 'Tracklist';
   const help = track.errorMessage || track.metadataError || track.matchError;
-  byId('detailHelp').textContent = help || (track.directUrl ? 'Uses the original audio link.'
+  byId('detailHelp').textContent = help || (track.duplicateOf ? `Same artist, title, and version as track ${String(track.duplicateOf).padStart(3, '0')}. This is a separate source link; leave it unchecked unless you want both copies.`
+    : track.directUrl ? 'Uses the original audio link.'
     : track.matchUrl && track.matchState === 'matched' ? 'A close match was selected automatically. Open it to check or choose another.'
       : track.matchUrl ? 'You chose this recording.' : track.candidates?.length ? 'Choose the recording that matches this track.' : 'Find audio matches to see your options.');
   const list = byId('candidateList');
@@ -346,8 +373,9 @@ function renderDetail(track) {
     row.append(button, open);
     list.appendChild(row);
   }
-  byId('retryTrackBtn').hidden = !track.errorMessage && !track.metadataError && !track.matchError;
+  byId('retryTrackBtn').hidden = (!track.errorMessage && !track.metadataError && !track.matchError) || (track.blockedOriginal && !track.matchError);
   byId('retryTrackBtn').textContent = track.metadataError ? 'Retry details' : track.matchError ? 'Retry match search' : 'Select for retry';
+  byId('findAlternativeBtn').hidden = !track.directUrl || !/protected|no audio format/i.test(track.errorMessage || '') || isFindingMatches;
 }
 
 function openDetail(index) {
@@ -386,6 +414,10 @@ byId('retryTrackBtn').addEventListener('click', () => {
   if (track.metadataError) fetchDetailsBtn.click();
   else if (track.matchError) findMatchesBtn.click();
 });
+byId('findAlternativeBtn').addEventListener('click', () => {
+  const track = loadedTracks.find(item => item.index === activeDetailIndex);
+  if (track) searchMatches([track.index], true);
+});
 
 byId('queueSearch').addEventListener('input', () => { renderTrackTable(); updateControls(); });
 byId('queueFilter').addEventListener('change', () => { renderTrackTable(); updateControls(); });
@@ -414,6 +446,7 @@ analyzeBtn.addEventListener('click', async () => {
     if (!result.success) throw new Error(result.error);
     loadedTracks = result.tracks.map((track, index) => ({ ...track, index: index + 1, selected: true, status: 'pending',
       matchState: track.directUrl ? 'direct' : 'needed' }));
+    markDuplicates(true);
     collectionSource = result.source;
     collectionInfo = { title: result.title, creator: result.creator, artworkUrl: result.artworkUrl, sourceUrl: result.sourceUrl, warning: result.warning };
     activeDetailIndex = null;
@@ -492,7 +525,8 @@ window.djAPI.onMetadataProgress(({ track, completed, total }) => {
   const item = loadedTracks.find(entry => entry.index === track.index);
   if (item) {
     Object.assign(item, track);
-    updateRow(item);
+    if (markDuplicates(true)) renderTrackTable();
+    else updateRow(item);
   }
   metadataProgress = { completed, total };
   updateControls();
@@ -512,15 +546,14 @@ window.djAPI.onMetadataCompleted(summary => {
   saveQueueSoon();
 });
 
-findMatchesBtn.addEventListener('click', async () => {
-  const indices = matchesNeeded().map(track => track.index);
+async function searchMatches(indices, force = false) {
   if (!indices.length) return;
   isFindingMatches = true;
   matchProgress = { completed: 0, total: indices.length };
   analyzeBtn.disabled = true;
   renderTrackTable(); updateControls();
   try {
-    const result = await window.djAPI.findMatches(indices, Number(byId('concurrencyRange').value));
+    const result = await window.djAPI.findMatches(indices, Number(byId('concurrencyRange').value), force);
     if (!result.success) throw new Error(result.error);
     matchWorkers = result.workers;
     updateMatchingBar();
@@ -530,14 +563,19 @@ findMatchesBtn.addEventListener('click', async () => {
     renderTrackTable(); updateControls();
     appendLog(`Could not find matches: ${err.message}`, 'err-msg');
   }
-});
+}
+findMatchesBtn.addEventListener('click', () => searchMatches(matchesNeeded().map(track => track.index)));
 cancelMatchesBtn.addEventListener('click', async () => {
   cancelMatchesBtn.disabled = true;
   await window.djAPI.cancelMatches();
 });
 window.djAPI.onMatchProgress(({ track, completed, total }) => {
   const item = loadedTracks.find(entry => entry.index === track.index);
-  if (item) { Object.assign(item, track); updateRow(item); }
+  if (item) {
+    Object.assign(item, track);
+    if (item.blockedOriginal && !item.matchError) { item.status = 'pending'; item.errorMessage = null; }
+    updateRow(item);
+  }
   matchProgress = { completed, total };
   updateControls(); saveQueueSoon();
 });
@@ -546,7 +584,7 @@ window.djAPI.onMatchCompleted(summary => {
   analyzeBtn.disabled = false;
   cancelMatchesBtn.disabled = false;
   renderTrackTable(); updateControls(); saveQueueSoon();
-  const review = selectedTracks().filter(track => !track.directUrl && !track.matchUrl && track.candidates?.length).length;
+  const review = selectedTracks().filter(track => (!track.directUrl || track.blockedOriginal) && !track.matchUrl && track.candidates?.length).length;
   const automatic = selectedTracks().filter(track => track.matchState === 'matched' && track.matchUrl).length;
   const banner = byId('summaryBanner');
   banner.hidden = false;
@@ -646,6 +684,7 @@ byId('resumeSessionBtn').addEventListener('click', async () => {
     const session = result.session;
     inputSource.value = session.input || '';
     loadedTracks = session.tracks.map(track => ({ ...track }));
+    markDuplicates();
     collectionSource = session.source || '';
     collectionInfo = session.collection || {};
     destinationDir = session.destinationDir || '';

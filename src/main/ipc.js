@@ -46,6 +46,7 @@ export function registerIpcHandlers(mainWindow) {
     let reusedMatches = 0;
     session.tracks = session.tracks.map((track, index) => {
       const restored = { ...track, index: index + 1 };
+      if (session.source === 'soundcloud' && restored.album === session.collection?.title) restored.album = '';
       if (['done', 'skipped'].includes(restored.status)) {
         try { if (!restored.outputPath) throw new Error('No output'); verifyMp3File(restored.outputPath); }
         catch { restored.status = 'pending'; restored.outputPath = null; }
@@ -149,8 +150,10 @@ export function registerIpcHandlers(mainWindow) {
     const selectedIndices = Array.isArray(request) ? request : request?.indices;
     if (!Array.isArray(selectedIndices) || !selectedIndices.every(Number.isSafeInteger)) return { success: false, error: 'Select valid tracks first' };
     const ids = new Set(selectedIndices);
-    const tracks = parsedTracks.filter(track => ids.has(track.index) && !track.directUrl && !track.matchUrl);
+    const force = request?.force === true;
+    const tracks = parsedTracks.filter(track => ids.has(track.index) && (force || ((!track.directUrl || track.blockedOriginal) && !track.matchUrl)));
     if (!tracks.length) return { success: false, error: 'No selected tracks need matches' };
+    if (force) for (const track of tracks) track.blockedOriginal = true;
     const job = { controller: new AbortController(), next: 0, completed: 0, errors: 0, total: tracks.length };
     activeMatching = job;
     const worker = async () => {
@@ -205,7 +208,7 @@ export function registerIpcHandlers(mainWindow) {
     const selectedTracks = parsedTracks.filter(track => selectedIds.has(track.index));
     if (selectedTracks.length !== selectedIds.size) return { success: false, error: 'Track selection is out of date; reload the queue' };
     if (selectedTracks.some(track => track.needsMetadata)) return { success: false, error: 'Fetch details for selected tracks before downloading' };
-    if (selectedTracks.some(track => !track.directUrl && !track.matchUrl)) return { success: false, error: 'Review audio matches for selected tracks before downloading' };
+    if (selectedTracks.some(track => (!track.directUrl || track.blockedOriginal) && !track.matchUrl)) return { success: false, error: 'Review audio matches for selected tracks before downloading' };
     if (options.destinationDir !== selectedDestination || !selectedDestination || !fs.existsSync(selectedDestination)) {
       return { success: false, error: 'Choose a destination folder' };
     }
@@ -219,7 +222,7 @@ export function registerIpcHandlers(mainWindow) {
       onAllCompleted: summary => {
         if (activeQueue === queue) activeQueue = null;
         send('batch-completed', summary);
-        if (!summary.cancelled && summary.destinationDir) shell.openPath(summary.destinationDir);
+        if (!summary.cancelled && summary.destinationDir && (summary.completed || summary.skipped)) shell.openPath(summary.destinationDir);
       }
     });
     activeQueue = queue;

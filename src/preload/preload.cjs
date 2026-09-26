@@ -13,7 +13,7 @@ contextBridge.exposeInMainWorld('djAPI', {
   parseInput: (input) => ipcRenderer.invoke('parse-input', input),
   fetchMetadata: (selectedIndices) => ipcRenderer.invoke('fetch-metadata', selectedIndices),
   cancelMetadata: () => ipcRenderer.invoke('cancel-metadata'),
-  findMatches: (indices, concurrency) => ipcRenderer.invoke('find-matches', { indices, concurrency }),
+  findMatches: (indices, concurrency, force = false) => ipcRenderer.invoke('find-matches', { indices, concurrency, force }),
   cancelMatches: () => ipcRenderer.invoke('cancel-matches'),
   chooseMatch: (index, url) => ipcRenderer.invoke('choose-match', index, url),
   startDownload: (options) => ipcRenderer.invoke('start-download', options),

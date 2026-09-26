@@ -1,6 +1,6 @@
 # DeckPrep roadmap
 
-This is the running feature log. The current review build is **1.4.0-beta.4**; public links and a reviewable queue are the priority.
+This is the running feature log. The current review build is **1.4.0-beta.5**; public links and a reviewable queue are the priority.
 
 ## In the 1.4 upgrade
 

@@ -48,7 +48,7 @@ export function normalizeTrack(item, source, fallbackUrl, index = 0) {
   if (source === 'youtube' && item.id && !/^https?:\/\//i.test(resolvedUrl)) resolvedUrl = `https://www.youtube.com/watch?v=${item.id}`;
   return {
     artist, title, mix: rightSideIsArtist ? parseTracklistLine(title)?.mix || '' : parsed?.mix || '',
-    album: item.album || '', year: item.year || null,
+    album: item.album || '', genre: item.genre || '', year: item.year || null,
     artworkUrl: item.thumbnail || item.artworkUrl || null,
     durationSec: Math.round(item.duration || item.durationSec || 0),
     directUrl: resolvedUrl, source, needsMetadata,
@@ -133,6 +133,11 @@ async function extractWithYtDlp(url, source) {
   });
   if (!tracks.length) throw new Error('No tracks found at that link');
   const result = { title: items[0]?.playlist_title || items[0]?.playlist || (tracks.length === 1 ? tracks[0].title : `${source} collection`), tracks };
+  if (items[0]?.playlist_id) {
+    for (const track of tracks) {
+      if (track.album === result.title || source === 'soundcloud') track.album = '';
+    }
+  }
   if (source === 'youtube' && items[0]?.playlist_id) {
     result.creator = items[0].playlist_uploader || '';
     result.artworkUrl = items[0].thumbnails?.at(-1)?.url || null;
@@ -162,6 +167,7 @@ function spotifyTrack(item, albumName, art) {
     title: dashVersion ? rawTitle.slice(0, dashVersion.index).trim() : rawTitle,
     artist: track.subtitle || track.artists?.map(artist => artist.name).join(', ') || 'Unknown Artist',
     album: track.album?.title || track.album?.name || albumName || '',
+    genre: track.genre || '',
     artworkUrl: track.coverArt?.sources?.[0]?.url || track.album?.images?.[0]?.url || art || null,
     durationSec: Math.round((track.duration_ms || track.duration || 0) / 1000),
     year: track.album?.release_date ? Number(track.album.release_date.slice(0, 4)) : null,
@@ -185,7 +191,7 @@ async function extractSpotify(url) {
   const title = entity.title || entity.name || 'Spotify collection';
   const artworkUrl = entity.coverArt?.sources?.[0]?.url || entity.visualIdentity?.image?.[0]?.url || null;
   const items = type === 'track' ? [entity] : entity.trackList || [];
-  const tracks = items.map(item => spotifyTrack(item, title, artworkUrl)).filter(track => track.title);
+  const tracks = items.map(item => spotifyTrack(item, type === 'album' ? title : '', artworkUrl)).filter(track => track.title);
   if (!tracks.length) throw new Error('No tracks found in this Spotify link');
   return { title, tracks, creator: entity.subtitle || entity.owner?.name || '', artworkUrl, sourceUrl: url,
     warning: type === 'playlist' ? `Spotify's public preview returned ${tracks.length} tracks. The full playlist length is unavailable here; compare with Spotify and paste a complete tracklist if tracks are missing.` : '' };

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.0-beta.6
+
+- Added an **Open folder when finished** option near the destination. It is off by default, saved across sessions, and only opens the destination after a successful batch when enabled.
+- Corrected the saved-session completion count to include only currently selected tracks.
+- Kept the user's current row selections intact while download progress updates arrive, so the queue and progress counts stay accurate.
+- Reset the previous queue's search and filter after importing a new source, so the new tracks are visible immediately.
+- Show unfinished tracks explicitly after cancellation, with progress reflecting the work that actually completed.
+- Closed track details when a search or filter hides that row, and clarified when an alternative recording has been chosen.
+- Manually checked the packaged app with the 429-track SoundCloud playlist: queue restore, selection, duplicate handling, all four folder layouts, successful exports, protected-source failure and alternate selection, and cancellation.
+
 ## 1.4.0-beta.5
 
 - Export filenames now use the song title without a playlist number or artist prefix; colliding titles get an artist suffix instead of overwriting files.

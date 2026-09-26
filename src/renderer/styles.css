@@ -96,5 +96,6 @@ img{-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
 .restore-facts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:13px 0}.restore-facts>div{display:flex;flex-direction:column;gap:5px;border:1px solid #39434c;border-radius:4px;padding:10px;background:#242a30}
 .restore-facts span{font-size:10px;color:#9eabb6;text-transform:uppercase;letter-spacing:.08em}.restore-facts strong{font-size:12px;font-weight:600;color:#e5edf4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .restore-dialog .restore-destination{font-size:11px;color:#9faab4;margin:0 0 21px;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
+.export-option{display:flex;align-items:center;gap:9px;color:#b9c2cb;font-size:11px;margin:-8px 0 20px;cursor:pointer}.export-option input{width:15px!important;height:15px!important;margin:0;flex:none;accent-color:#438fd2}.export-option:focus-within{color:#e6f2ff}.export-option input:focus-visible{outline:2px solid #6db6fa;outline-offset:2px}
 .dialog-actions{padding-top:14px;border-top:1px solid #3a434b}.dialog-actions .button{min-height:36px}
 @media(max-width:1160px){.playlist-card{max-width:240px;min-width:170px}.playlist-action{display:none}}

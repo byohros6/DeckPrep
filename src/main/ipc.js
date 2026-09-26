@@ -222,7 +222,7 @@ export function registerIpcHandlers(mainWindow) {
       onAllCompleted: summary => {
         if (activeQueue === queue) activeQueue = null;
         send('batch-completed', summary);
-        if (!summary.cancelled && summary.destinationDir && (summary.completed || summary.skipped)) shell.openPath(summary.destinationDir);
+        if (options.openFolderWhenFinished === true && !summary.cancelled && summary.destinationDir && (summary.completed || summary.skipped)) shell.openPath(summary.destinationDir);
       }
     });
     activeQueue = queue;

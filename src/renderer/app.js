@@ -98,6 +98,7 @@ function saveQueueSoon(delay = 400) {
     window.djAPI.saveSession({
       input: inputSource.value, source: collectionSource, collection: collectionInfo,
       tracks: loadedTracks, destinationDir, mode: byId('crateMode').value,
+      openFolderWhenFinished: byId('openFolderWhenFinished').checked,
       concurrency: Number(byId('concurrencyRange').value), performanceMode: byId('speedMode').value,
       phase: isDownloading ? 'downloading' : complete ? 'completed' : 'review'
     }).catch(err => appendLog(`Could not save session: ${err.message}`, 'err-msg'));
@@ -234,6 +235,10 @@ function updateRow(track) {
 
 function renderTrackTable() {
   const visible = visibleTracks();
+  if (activeDetailIndex !== null && !visible.some(track => track.index === activeDetailIndex)) {
+    activeDetailIndex = null;
+    byId('detailPanel').hidden = true;
+  }
   byId('visibleCount').textContent = `${visible.length} shown`;
   trackTableBody.innerHTML = visible.length ? visible.map(track => `
     <tr id="track-row-${track.index}" data-index="${track.index}" tabindex="0" class="${track.selected ? '' : 'excluded'} ${activeDetailIndex === track.index ? 'active-row' : ''}">
@@ -292,7 +297,7 @@ function updateMatchingBar() {
 
 function updateProgress() {
   const selected = selectedTracks();
-  const finished = selected.filter(track => ['done', 'skipped', 'error', 'cancelled'].includes(track.status)).length;
+  const finished = selected.filter(track => ['done', 'skipped', 'error'].includes(track.status)).length;
   const current = isFetchingDetails ? metadataProgress.completed : isFindingMatches ? matchProgress.completed : finished;
   const total = isFetchingDetails ? metadataProgress.total : isFindingMatches ? matchProgress.total : selected.length;
   const percent = total ? Math.round(current * 100 / total) : 0;
@@ -336,9 +341,10 @@ function renderDetail(track) {
   byId('detailSource').textContent = track.source === 'apple' ? 'Apple Music' : track.source === 'youtube' ? 'YouTube' : track.source === 'soundcloud' ? 'SoundCloud' : track.source === 'spotify' ? 'Spotify' : 'Tracklist';
   const help = track.errorMessage || track.metadataError || track.matchError;
   byId('detailHelp').textContent = help || (track.duplicateOf ? `Same artist, title, and version as track ${String(track.duplicateOf).padStart(3, '0')}. This is a separate source link; leave it unchecked unless you want both copies.`
-    : track.directUrl ? 'Uses the original audio link.'
     : track.matchUrl && track.matchState === 'matched' ? 'A close match was selected automatically. Open it to check or choose another.'
-      : track.matchUrl ? 'You chose this recording.' : track.candidates?.length ? 'Choose the recording that matches this track.' : 'Find audio matches to see your options.');
+    : track.matchUrl ? 'You chose this recording.'
+      : track.directUrl && !track.blockedOriginal ? 'Uses the original audio link.'
+        : track.candidates?.length ? 'Choose the recording that matches this track.' : 'Find audio matches to see your options.');
   const list = byId('candidateList');
   list.replaceChildren();
   for (const candidate of track.candidates || []) {
@@ -449,6 +455,8 @@ analyzeBtn.addEventListener('click', async () => {
     markDuplicates(true);
     collectionSource = result.source;
     collectionInfo = { title: result.title, creator: result.creator, artworkUrl: result.artworkUrl, sourceUrl: result.sourceUrl, warning: result.warning };
+    byId('queueSearch').value = '';
+    byId('queueFilter').value = 'all';
     activeDetailIndex = null;
     byId('detailPanel').hidden = true;
     byId('summaryBanner').hidden = true;
@@ -612,6 +620,10 @@ byId('clearLogBtn').addEventListener('click', () => { logConsole.textContent = '
 byId('concurrencyRange').addEventListener('input', () => { byId('speedMode').value = 'custom'; updateSpeed(); saveQueueSoon(); });
 byId('speedMode').addEventListener('change', () => { updateSpeed(); saveQueueSoon(); });
 byId('crateMode').addEventListener('change', () => { updateCrateHint(); saveQueueSoon(); });
+byId('openFolderWhenFinished').addEventListener('change', () => {
+  localStorage.setItem('openFolderWhenFinished', String(byId('openFolderWhenFinished').checked));
+  saveQueueSoon();
+});
 byId('retryFailedBtn').addEventListener('click', () => {
   const failed = loadedTracks.filter(track => track.status === 'error');
   loadedTracks.forEach(track => { track.selected = failed.includes(track); });
@@ -633,7 +645,8 @@ startBtn.addEventListener('click', async () => {
   try {
     const result = await window.djAPI.startDownload({
       destinationDir, selectedIndices: pendingTracks().map(track => track.index),
-      concurrency: Math.max(1, Math.min(12, Number(byId('concurrencyRange').value) || 1)), mode: byId('crateMode').value
+      concurrency: Math.max(1, Math.min(12, Number(byId('concurrencyRange').value) || 1)), mode: byId('crateMode').value,
+      openFolderWhenFinished: byId('openFolderWhenFinished').checked
     });
     if (!result.success) throw new Error(result.error);
   } catch (err) {
@@ -654,7 +667,13 @@ cancelBtn.addEventListener('click', async () => {
 
 function updateTrack(track) {
   const item = loadedTracks.find(entry => entry.index === track.index);
-  if (item) { Object.assign(item, track); updateRow(item); saveQueueSoon(); }
+  if (item) {
+    const selected = item.selected;
+    Object.assign(item, track);
+    item.selected = selected;
+    updateRow(item);
+    saveQueueSoon();
+  }
   updateProgress();
 }
 window.djAPI.onTrackProgress(updateTrack);
@@ -667,9 +686,10 @@ window.djAPI.onBatchCompleted(summary => {
   renderTrackTable();
   updateControls();
   const banner = byId('summaryBanner');
+  const notCompleted = Math.max(0, summary.total - summary.completed - summary.skipped - summary.errors);
   banner.hidden = false;
   banner.classList.toggle('has-errors', summary.errors > 0 || summary.cancelled);
-  banner.textContent = summary.cancelled ? `Stopped · ${summary.completed} downloaded · ${summary.errors} failed`
+  banner.textContent = summary.cancelled ? `Stopped · ${summary.completed} downloaded · ${notCompleted} not completed · ${summary.errors} failed`
     : `${summary.completed} downloaded · ${summary.skipped} already existed · ${summary.errors} failed`;
   appendLog(summary.cancelled ? 'Batch cancelled.' : `Finished: ${summary.completed} downloaded, ${summary.skipped} skipped, ${summary.errors} errors.`, summary.errors ? 'err-msg' : 'done-msg');
   saveQueueSoon();
@@ -690,6 +710,10 @@ byId('resumeSessionBtn').addEventListener('click', async () => {
     destinationDir = session.destinationDir || '';
     byId('destPath').value = destinationDir;
     byId('openFolderBtn').disabled = !destinationDir;
+    if (typeof session.openFolderWhenFinished === 'boolean') {
+      byId('openFolderWhenFinished').checked = session.openFolderWhenFinished;
+      localStorage.setItem('openFolderWhenFinished', String(session.openFolderWhenFinished));
+    }
     if ([...byId('crateMode').options].some(option => option.value === session.mode)) byId('crateMode').value = session.mode;
     updateCrateHint();
     const workers = Number(session.concurrency);
@@ -734,12 +758,13 @@ byId('discardSessionBtn').addEventListener('click', async () => {
     byId('concurrencyRange').max = '12';
     updateSpeed();
     updateCrateHint();
+    byId('openFolderWhenFinished').checked = localStorage.getItem('openFolderWhenFinished') === 'true';
     try {
       const saved = await window.djAPI.getSavedSession();
       if (saved?.tracks?.length && saved.phase !== 'completed') {
         sessionPromptOpen = true;
         const selected = saved.tracks.filter(track => track.selected).length;
-        const completed = saved.tracks.filter(track => ['done', 'skipped'].includes(track.status)).length;
+        const completed = saved.tracks.filter(track => track.selected && ['done', 'skipped'].includes(track.status)).length;
         byId('restoreName').textContent = saved.collection?.title || 'Previous queue';
         byId('restoreDescription').textContent = `${saved.tracks.length} tracks${saved.collection?.creator ? ` · by ${saved.collection.creator}` : ''}`;
         byId('restoreSelected').textContent = String(selected);

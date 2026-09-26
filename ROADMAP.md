@@ -1,6 +1,6 @@
 # DeckPrep roadmap
 
-This is the running feature log. The current review build is **1.4.0-beta.5**; public links and a reviewable queue are the priority.
+This is the running feature log. The current review build is **1.4.0-beta.6**; public links and a reviewable queue are the priority.
 
 ## In the 1.4 upgrade
 
@@ -9,7 +9,7 @@ This is the running feature log. The current review build is **1.4.0-beta.5**; p
 - [x] Candidate search across SoundCloud and YouTube with review for uncertain matches.
 - [x] Save unfinished queues and ask whether to restore them on launch.
 - [x] Retry failed rows, keep original files, and verify exported MP3 headers.
-- [ ] Complete packaged Windows, large playlist, cancellation, and recovery acceptance checks.
+- [x] Complete packaged Windows, large playlist, cancellation, and recovery acceptance checks.
 - [ ] Publish the final 1.4.0 release after beta review.
 
 ## Later candidates

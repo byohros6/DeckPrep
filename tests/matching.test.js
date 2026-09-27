@@ -12,11 +12,18 @@ test('a strong title, artist, and duration match can be selected automatically',
   assert.equal(result.chosen?.url, 'https://soundcloud.com/example/track');
 });
 
-test('missing duration and a wrong version stay in review', () => {
+test('an exact title and artist can match when the source omits duration', () => {
   const missingDuration = rankCandidates({ ...track, durationSec: 0 }, [
     { url: 'https://soundcloud.com/example/track', title: '(It Goes Like) Nanana', artist: 'Peggy Gou', durationSec: 232 }
   ]);
-  assert.equal(missingDuration.chosen, null);
+  assert.equal(missingDuration.chosen?.url, 'https://soundcloud.com/example/track');
+  const uncertain = rankCandidates({ ...track, durationSec: 0 }, [
+    { url: 'https://youtube.com/watch?v=short', title: '(It Goes Like) Nanana', artist: 'Peggy Gou', durationSec: 30 }
+  ]);
+  assert.equal(uncertain.chosen, null);
+});
+
+test('a wrong version stays in review even with matching duration', () => {
   const wrongVersion = rankCandidates(track, [
     { url: 'https://soundcloud.com/example/remix', title: '(It Goes Like) Nanana (Extended Remix)', artist: 'Peggy Gou', durationSec: 360 }
   ]);
@@ -51,4 +58,16 @@ test('an alternate remix or cover is not silently accepted', () => {
     { url: 'https://youtube.com/watch?v=cover', title: 'Peggy Gou - (It Goes Like) Nanana cover', artist: 'Peggy Gou', durationSec: 231 }
   ]);
   assert.equal(cover.chosen, null);
+});
+
+test('alternative search does not suggest the blocked SoundCloud recording again', () => {
+  const result = rankCandidates({ ...track, blockedOriginal: true, soundcloudId: '1708836636',
+    directUrl: 'https://api.soundcloud.com/tracks/1708836636' }, [
+    { url: 'https://soundcloud.com/owner/original', sourceId: '1708836636', provider: 'SoundCloud',
+      title: '(It Goes Like) Nanana', artist: 'Peggy Gou', durationSec: 231 },
+    { url: 'https://youtube.com/watch?v=other', sourceId: 'other', provider: 'YouTube',
+      title: '(It Goes Like) Nanana', artist: 'Peggy Gou', durationSec: 232 }
+  ]);
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.chosen?.url, 'https://youtube.com/watch?v=other');
 });

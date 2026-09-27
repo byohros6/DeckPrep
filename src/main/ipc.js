@@ -116,13 +116,14 @@ export function registerIpcHandlers(mainWindow) {
     if (parsedTracks.filter(track => ids.has(track.index)).length !== ids.size) return { success: false, error: 'Track selection is out of date' };
     const tracks = parsedTracks.filter(track => ids.has(track.index) && track.needsMetadata);
     if (!tracks.length) return { success: false, error: 'No selected tracks need details' };
-    const job = { controller: new AbortController(), next: 0, completed: 0, errors: 0, total: tracks.length };
+    const job = { controller: new AbortController(), next: 0, completed: 0, errors: 0, total: tracks.length, finished: false };
     activeMetadata = job;
     const worker = async () => {
       while (!job.controller.signal.aborted && job.next < tracks.length) {
         const track = tracks[job.next++];
         try {
           const details = await fetchTrackDetails(track, job.controller.signal);
+          if (job.controller.signal.aborted) return;
           Object.assign(track, details, { metadataError: null });
         } catch (err) {
           if (job.controller.signal.aborted) return;
@@ -135,6 +136,8 @@ export function registerIpcHandlers(mainWindow) {
     };
     const workers = tracks.every(track => track.source === 'soundcloud' && track.soundcloudId) ? 8 : 4;
     Promise.all(Array.from({ length: Math.min(workers, tracks.length) }, worker)).finally(() => {
+      if (job.finished) return;
+      job.finished = true;
       if (activeMetadata === job) activeMetadata = null;
       send('metadata-completed', { completed: job.completed, total: job.total, errors: job.errors, cancelled: job.controller.signal.aborted });
     });
@@ -142,7 +145,11 @@ export function registerIpcHandlers(mainWindow) {
   });
   ipcMain.handle('cancel-metadata', () => {
     if (!activeMetadata) return { success: false, error: 'No details lookup is running' };
-    activeMetadata.controller.abort();
+    const job = activeMetadata;
+    job.controller.abort();
+    job.finished = true;
+    activeMetadata = null;
+    send('metadata-completed', { completed: job.completed, total: job.total, errors: job.errors, cancelled: true });
     return { success: true };
   });
   ipcMain.handle('find-matches', (_, request) => {
@@ -154,13 +161,14 @@ export function registerIpcHandlers(mainWindow) {
     const tracks = parsedTracks.filter(track => ids.has(track.index) && (force || ((!track.directUrl || track.blockedOriginal) && !track.matchUrl)));
     if (!tracks.length) return { success: false, error: 'No selected tracks need matches' };
     if (force) for (const track of tracks) track.blockedOriginal = true;
-    const job = { controller: new AbortController(), next: 0, completed: 0, errors: 0, total: tracks.length };
+    const job = { controller: new AbortController(), next: 0, completed: 0, errors: 0, total: tracks.length, finished: false };
     activeMatching = job;
     const worker = async () => {
       while (!job.controller.signal.aborted && job.next < tracks.length) {
         const track = tracks[job.next++];
         try {
           const result = await findAudioMatches(track, job.controller.signal);
+          if (job.controller.signal.aborted) return;
           track.candidates = result.candidates;
           track.matchUrl = result.chosen?.url || null;
           track.matchState = result.chosen ? 'matched' : 'review';
@@ -178,6 +186,8 @@ export function registerIpcHandlers(mainWindow) {
     const requestedConcurrency = Math.max(1, Math.min(12, Number(request?.concurrency) || 4));
     const workers = Math.min(tracks.length, 6, Math.max(1, Math.round(requestedConcurrency * 0.75)));
     Promise.all(Array.from({ length: workers }, worker)).finally(() => {
+      if (job.finished) return;
+      job.finished = true;
       if (activeMatching === job) activeMatching = null;
       send('match-completed', { completed: job.completed, total: job.total, errors: job.errors, cancelled: job.controller.signal.aborted });
     });
@@ -185,7 +195,11 @@ export function registerIpcHandlers(mainWindow) {
   });
   ipcMain.handle('cancel-matches', () => {
     if (!activeMatching) return { success: false, error: 'No match search is running' };
-    activeMatching.controller.abort();
+    const job = activeMatching;
+    job.controller.abort();
+    job.finished = true;
+    activeMatching = null;
+    send('match-completed', { completed: job.completed, total: job.total, errors: job.errors, cancelled: true });
     return { success: true };
   });
   ipcMain.handle('choose-match', (_, index, url) => {
@@ -217,7 +231,11 @@ export function registerIpcHandlers(mainWindow) {
       concurrency: options.concurrency,
       mode: options.mode,
       onTrackProgress: track => send('track-progress', track),
-      onTrackCompleted: track => send('track-completed', track),
+      onTrackCompleted: track => {
+        const original = parsedTracks.find(item => item.index === track.index);
+        if (original) Object.assign(original, track);
+        send('track-completed', track);
+      },
       onLog: message => send('log', message),
       onAllCompleted: summary => {
         if (activeQueue === queue) activeQueue = null;

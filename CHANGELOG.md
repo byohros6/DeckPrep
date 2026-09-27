@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0-beta.8
+
+- Automatically search for another SoundCloud or YouTube recording after a selected source proves protected or lacks exportable audio, and continue exporting a confident match once. Never retry the same blocked SoundCloud track as an alternative.
+- Accept a strong title, artist, and version match when SoundCloud does not supply the original duration; keep short clips and uncertain versions for review.
+- Keep the matching queue in sync with completed downloads so automatic recovery can see a blocked source, and make Stop immediately release stalled metadata or match searches.
+- Keep the result honest: finding a match does not count as a download, and the final batch banner reflects the whole selected queue. Uncertain matches wait for review.
+
 ## 1.4.0-beta.7
 
 - Added Shift-click range selection across visible tracks and Ctrl-click row toggling, with keyboard access to the same actions.

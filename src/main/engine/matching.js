@@ -52,13 +52,19 @@ export function scoreCandidate(track, candidate) {
 export function rankCandidates(track, candidates) {
   const unique = new Map();
   for (const candidate of candidates) {
+    if (track.blockedOriginal && (candidate.url === track.directUrl
+      || (track.soundcloudId && candidate.provider === 'SoundCloud' && String(candidate.sourceId) === String(track.soundcloudId)))) continue;
     if (candidate.url && !unique.has(candidate.url)) unique.set(candidate.url, { ...candidate, score: scoreCandidate(track, candidate) });
   }
   const ranked = [...unique.values()].sort((a, b) => b.score - a.score).slice(0, 5);
   const first = ranked[0];
   const signals = first && candidateSignals(track, first);
+  const durationAgrees = signals?.durationDelta <= 10;
+  const exactWithoutSourceDuration = !track.durationSec && first?.durationSec >= 60 && first.durationSec <= 900
+    && signals.title >= 0.95 && signals.artist >= 0.8
+    && (!track.mix || recall(track.mix, first.title) >= 0.9);
   const confident = !!first && first.score >= 0.78 && signals.title >= 0.82 && signals.artist >= 0.55
-    && signals.durationDelta <= 10 && signals.versionCompatible;
+    && (durationAgrees || exactWithoutSourceDuration) && signals.versionCompatible;
   return { candidates: ranked, chosen: confident ? first : null };
 }
 
@@ -71,7 +77,7 @@ async function search(binary, prefix, query, signal) {
       const item = JSON.parse(line);
       const url = item.webpage_url || (item.id && prefix.startsWith('yt') ? `https://www.youtube.com/watch?v=${item.id}` : item.url);
       if (!url?.startsWith('https://')) return [];
-      return [{ url, title: item.title || '', artist: item.artist || item.uploader || '', uploader: item.uploader || '',
+      return [{ url, sourceId: item.id ? String(item.id) : '', title: item.title || '', artist: item.artist || item.uploader || '', uploader: item.uploader || '',
         durationSec: Math.round(item.duration || 0), provider: prefix.startsWith('sc') ? 'SoundCloud' : 'YouTube' }];
     } catch { return []; }
   });

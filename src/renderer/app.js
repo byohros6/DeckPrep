@@ -32,6 +32,7 @@ let sessionPromptOpen = false;
 let logCount = 0;
 let cpuCores = 4;
 let selectionAnchorIndex = null;
+let automaticRecoveryIndices = null;
 
 function presetConcurrency(mode) {
   if (mode === 'gentle') return Math.min(2, Math.max(1, Math.floor(cpuCores / 4)));
@@ -197,7 +198,7 @@ function visibleTracks() {
 
 function displayStatus(track) {
   if (!track.selected && !isDownloading) return track.duplicateOf ? `Duplicate of #${String(track.duplicateOf).padStart(3, '0')}` : 'Not selected';
-  if (track.status === 'error') return track.blockedOriginal ? 'Find alternative' : 'Failed';
+  if (track.status === 'error') return track.blockedOriginal ? isFindingMatches ? 'Finding alternative' : 'Find alternative' : 'Failed';
   if (track.status === 'done') return track.duplicateOf ? 'Downloaded · duplicate' : 'Downloaded';
   if (track.status === 'skipped') return 'Already exists';
   if (track.metadataError) return 'Details failed';
@@ -590,11 +591,13 @@ window.djAPI.onMetadataCompleted(summary => {
   saveQueueSoon();
 });
 
-async function searchMatches(indices, force = false) {
+async function searchMatches(indices, force = false, autoResume = false) {
   if (!indices.length) return;
+  automaticRecoveryIndices = autoResume ? new Set(indices) : null;
   isFindingMatches = true;
   matchProgress = { completed: 0, total: indices.length };
   analyzeBtn.disabled = true;
+  byId('summaryBanner').hidden = true;
   renderTrackTable(); updateControls();
   try {
     const result = await window.djAPI.findMatches(indices, Number(byId('concurrencyRange').value), force);
@@ -602,6 +605,7 @@ async function searchMatches(indices, force = false) {
     matchWorkers = result.workers;
     updateMatchingBar();
   } catch (err) {
+    automaticRecoveryIndices = null;
     isFindingMatches = false;
     analyzeBtn.disabled = false;
     renderTrackTable(); updateControls();
@@ -624,6 +628,8 @@ window.djAPI.onMatchProgress(({ track, completed, total }) => {
   updateControls(); saveQueueSoon();
 });
 window.djAPI.onMatchCompleted(summary => {
+  const recoveryIndices = automaticRecoveryIndices;
+  automaticRecoveryIndices = null;
   isFindingMatches = false;
   analyzeBtn.disabled = false;
   cancelMatchesBtn.disabled = false;
@@ -638,6 +644,13 @@ window.djAPI.onMatchCompleted(summary => {
       summary.errors ? `${summary.errors} searches failed` : ''].filter(Boolean).join(' · ');
   appendLog(summary.cancelled ? `Match search stopped after ${summary.completed} tracks.`
     : `Match search finished: ${automatic} matched automatically, ${review} need review, ${summary.errors} could not be found.`, summary.errors ? 'err-msg' : 'done-msg');
+  if (!summary.cancelled && recoveryIndices) {
+    const ready = selectedTracks().filter(track => recoveryIndices.has(track.index) && track.matchState === 'matched' && track.matchUrl);
+    if (ready.length) {
+      appendLog(`Continuing export for ${ready.length} confidently matched ${ready.length === 1 ? 'track' : 'tracks'}.`, 'sys-msg');
+      beginDownload(ready.map(track => track.index));
+    }
+  }
 });
 
 byId('browseBtn').addEventListener('click', async () => {
@@ -668,19 +681,20 @@ byId('retryFailedBtn').addEventListener('click', () => {
   appendLog(`${failed.length} failed tracks selected for retry. Review them, then download selected.`, 'sys-msg');
 });
 
-startBtn.addEventListener('click', async () => {
-  if (startBtn.disabled) return;
+async function beginDownload(indices) {
+  if (isDownloading || !indices.length) return;
   isDownloading = true;
   analyzeBtn.disabled = true;
   cancelBtn.disabled = false;
   byId('summaryBanner').hidden = true;
-  pendingTracks().forEach(track => { track.status = 'pending'; track.errorMessage = null; });
+  const ids = new Set(indices);
+  loadedTracks.filter(track => ids.has(track.index)).forEach(track => { track.status = 'pending'; track.errorMessage = null; });
   renderTrackTable();
   updateControls();
   saveQueueSoon();
   try {
     const result = await window.djAPI.startDownload({
-      destinationDir, selectedIndices: pendingTracks().map(track => track.index),
+      destinationDir, selectedIndices: indices,
       concurrency: Math.max(1, Math.min(12, Number(byId('concurrencyRange').value) || 1)), mode: byId('crateMode').value,
       openFolderWhenFinished: byId('openFolderWhenFinished').checked
     });
@@ -694,6 +708,10 @@ startBtn.addEventListener('click', async () => {
     updateControls();
     saveQueueSoon();
   }
+}
+
+startBtn.addEventListener('click', () => {
+  if (!startBtn.disabled) beginDownload(pendingTracks().map(track => track.index));
 });
 
 cancelBtn.addEventListener('click', async () => {
@@ -722,14 +740,18 @@ window.djAPI.onBatchCompleted(summary => {
   renderTrackTable();
   updateControls();
   const banner = byId('summaryBanner');
-  const notCompleted = Math.max(0, summary.total - summary.completed - summary.skipped - summary.errors);
+  const selected = selectedTracks();
+  const downloaded = selected.filter(track => track.status === 'done').length;
+  const skipped = selected.filter(track => track.status === 'skipped').length;
+  const errors = selected.filter(track => track.status === 'error').length;
+  const notCompleted = selected.length - downloaded - skipped - errors;
   banner.hidden = false;
-  banner.classList.toggle('has-errors', summary.errors > 0 || summary.cancelled);
+  banner.classList.toggle('has-errors', errors > 0 || summary.cancelled);
   const blocked = loadedTracks.filter(track => track.status === 'error' && track.blockedOriginal);
-  const resultText = summary.cancelled ? ['Stopped', summary.completed ? `${summary.completed} downloaded` : '',
-    notCompleted ? `${notCompleted} not completed` : '', summary.errors ? `${summary.errors} need attention` : ''].filter(Boolean).join(' · ')
-    : [summary.completed ? `${summary.completed} downloaded` : '', summary.skipped ? `${summary.skipped} already existed` : '',
-      summary.errors ? `${summary.errors} need attention` : ''].filter(Boolean).join(' · ');
+  const resultText = summary.cancelled ? ['Stopped', downloaded ? `${downloaded} downloaded` : '',
+    notCompleted ? `${notCompleted} not completed` : '', errors ? `${errors} need attention` : ''].filter(Boolean).join(' · ')
+    : [downloaded ? `${downloaded} downloaded` : '', skipped ? `${skipped} already existed` : '',
+      errors ? `${errors} need attention` : ''].filter(Boolean).join(' · ');
   banner.replaceChildren(document.createTextNode(resultText));
   if (blocked.length) {
     const action = document.createElement('button');
@@ -741,6 +763,13 @@ window.djAPI.onBatchCompleted(summary => {
   }
   appendLog(summary.cancelled ? 'Batch cancelled.' : `Finished: ${summary.completed} downloaded, ${summary.skipped} skipped, ${summary.errors} need attention.`, summary.errors ? 'err-msg' : 'done-msg');
   saveQueueSoon();
+  const newBlocked = blocked.filter(track => track.selected && !track.autoFallbackTried);
+  if (!summary.cancelled && newBlocked.length) {
+    newBlocked.forEach(track => { track.autoFallbackTried = true; });
+    appendLog(`Searching for another recording for ${newBlocked.length} protected ${newBlocked.length === 1 ? 'track' : 'tracks'}.`, 'sys-msg');
+    saveQueueSoon();
+    searchMatches(newBlocked.map(track => track.index), false, true);
+  }
 });
 
 byId('resumeSessionBtn').addEventListener('click', async () => {

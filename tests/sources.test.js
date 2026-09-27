@@ -8,6 +8,7 @@ test('link sources and pasted tracklists are recognized', () => {
   assert.equal(detectInputType('https://open.spotify.com/playlist/abc'), 'spotify');
   assert.equal(detectInputType('soundcloud.com/user/track'), 'soundcloud');
   assert.equal(detectInputType('https://music.youtube.com/watch?v=abc'), 'youtube');
+  assert.equal(detectInputType('https://music.apple.com/us/playlist/example/pl.123'), 'apple');
   assert.equal(detectInputType('Artist - Song'), 'text');
 });
 
@@ -39,16 +40,38 @@ test('multiple links load into one queue', async () => {
   }
 });
 
+test('Spotify preview keeps remix details and reports unverified playlist length', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    const entity = { title: 'Set', subtitle: 'A DJ', trackList: [
+      { title: 'Brighter Days - Marco Lys Remix', subtitle: 'Cajmere, Dajae', duration: 383000, uri: 'spotify:track:abc' }
+    ] };
+    const data = { props: { pageProps: { state: { data: { entity } } } } };
+    return { ok: true, text: async () => `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(data)}</script>` };
+  };
+  try {
+    const result = await parseInput('https://open.spotify.com/playlist/example');
+    assert.equal(result.tracks[0].title, 'Brighter Days');
+    assert.equal(result.tracks[0].mix, 'Marco Lys Remix');
+    assert.equal(result.tracks[0].durationSec, 383);
+    assert.equal(result.tracks[0].album, '');
+    assert.match(result.warning, /full playlist length is unavailable/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('SoundCloud playlist entries without titles stay in the queue and resolve to full metadata', () => {
   const url = 'https://soundcloud.com/moanrecordings/hector-couto-rendher-break-down-dennis-cruz-remix';
   const pending = normalizeTrack({ url, playlist_title: 'Deep tech/minimal/tech house extended' }, 'soundcloud', url, 1);
   assert.equal(pending.needsMetadata, true);
   assert.equal(pending.directUrl, url);
   assert.match(pending.title, /hector couto rendher/i);
-  const resolved = normalizeTrack({ webpage_url: url, title: 'Hector Couto, Rendher - Break Down (Dennis Cruz Remix)', artist: 'Hector Couto, Rendher', duration: 342 }, 'soundcloud', url);
+  const resolved = normalizeTrack({ webpage_url: url, title: 'Hector Couto, Rendher - Break Down (Dennis Cruz Remix)', artist: 'Hector Couto, Rendher', duration: 342, genre: 'Tech House' }, 'soundcloud', url);
   assert.equal(resolved.needsMetadata, false);
   assert.equal(resolved.title, 'Break Down (Dennis Cruz Remix)');
   assert.equal(resolved.durationSec, 342);
+  assert.equal(resolved.genre, 'Tech House');
 });
 
 test('SoundCloud public embed metadata becomes a reviewable track', () => {
@@ -60,6 +83,13 @@ test('SoundCloud public embed metadata becomes a reviewable track', () => {
   assert.equal(result.needsMetadata, false);
   assert.equal(result.durationSec, 0);
   assert.equal(result.soundcloudId, '1576004935');
+});
+
+test('YouTube title ending with channel artist is not reversed', () => {
+  const track = normalizeTrack({ title: 'BELLAKEO (Video Oficial) - Peso Pluma, Anitta', channel: 'Peso Pluma', id: 'example', duration: 235 }, 'youtube', 'https://youtube.com/watch?v=example');
+  assert.equal(track.title, 'BELLAKEO');
+  assert.equal(track.artist, 'Peso Pluma, Anitta');
+  assert.equal(track.durationSec, 235);
 });
 
 test('download and transcoding engines are present', async () => {

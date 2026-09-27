@@ -68,7 +68,7 @@ test('cleanArtist strips uploader suffixes and quotes', () => {
   assert.strictEqual(cleanArtist('"Calvin Harris"'), 'Calvin Harris');
 });
 
-test('buildDestinationPath formats flat and partitioned crates correctly and avoids double extensions', () => {
+test('buildDestinationPath uses song names and explicit folder layouts', () => {
   const flat = buildDestinationPath({
     baseDir: 'C:\\Music',
     mode: 'flat',
@@ -78,7 +78,7 @@ test('buildDestinationPath formats flat and partitioned crates correctly and avo
     mix: 'FISHER Rework',
     ext: '.mp3'
   });
-  assert.strictEqual(flat, 'C:\\Music\\018. Bob Sinclar - World, Hold On (FISHER Rework).mp3');
+  assert.strictEqual(flat, 'C:\\Music\\World, Hold On (FISHER Rework).mp3');
 
   // Avoid .mp3.mp3 double extension when title already contains .mp3
   const withExt = buildDestinationPath({
@@ -89,18 +89,23 @@ test('buildDestinationPath formats flat and partitioned crates correctly and avo
     title: 'Losing It.mp3',
     ext: '.mp3'
   });
-  assert.strictEqual(withExt, 'C:\\Music\\001. Fisher - Losing It.mp3');
+  assert.strictEqual(withExt, 'C:\\Music\\Losing It.mp3');
 
   const partitioned = buildDestinationPath({
     baseDir: 'C:\\Music',
-    mode: 'partitioned',
+    mode: 'genre',
     index: 1,
     artist: 'Calvin Harris',
     title: 'Miracle',
     genre: 'House / Dance',
     ext: '.mp3'
   });
-  assert.strictEqual(partitioned, 'C:\\Music\\House _ Dance\\001. Calvin Harris - Miracle.mp3');
+  assert.strictEqual(partitioned, 'C:\\Music\\House _ Dance\\Miracle.mp3');
+
+  const artistFolder = buildDestinationPath({ baseDir: 'C:\\Music', mode: 'artist', artist: 'Calvin Harris', title: 'Miracle' });
+  assert.strictEqual(artistFolder, 'C:\\Music\\Calvin Harris\\Miracle.mp3');
+  const unknownGenre = buildDestinationPath({ baseDir: 'C:\\Music', mode: 'genre', artist: 'Calvin Harris', title: 'Miracle' });
+  assert.strictEqual(unknownGenre, 'C:\\Music\\Unknown Genre\\Miracle.mp3');
 
   // Handle long titles and trailing dots safely for Windows MAX_PATH
   const longPath = buildDestinationPath({

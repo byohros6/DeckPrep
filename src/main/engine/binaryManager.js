@@ -7,6 +7,11 @@ import { promisify } from 'util';
 const execFileAsync = promisify(execFile);
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../');
 
+// Electron's filesystem can read an asar path, but Windows cannot launch an exe inside it.
+export function executablePath(binaryPath) {
+  return binaryPath?.replace(/([\\/])app\.asar([\\/])/i, '$1app.asar.unpacked$2');
+}
+
 export async function resolveBinary(name) {
   if (!['ffmpeg', 'yt-dlp'].includes(name)) return null;
   const fileName = process.platform === 'win32' ? `${name}.exe` : name;
@@ -18,7 +23,8 @@ export async function resolveBinary(name) {
   if (name === 'ffmpeg') {
     try {
       const ffmpegStatic = await import('ffmpeg-static');
-      if (fs.existsSync(ffmpegStatic.default)) return ffmpegStatic.default;
+      const binary = executablePath(ffmpegStatic.default);
+      if (binary && fs.existsSync(binary)) return binary;
     } catch {}
   }
   try {

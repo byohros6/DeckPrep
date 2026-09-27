@@ -61,18 +61,18 @@ async function ensureJpegBuffer(buffer) {
 export async function tagMp3File(filePath, metadata) {
   const title = cleanTitle(metadata.title || '');
   const artist = cleanArtist(metadata.artist || '');
-  const album = metadata.album || title;
+  const album = metadata.album || '';
   const genre = metadata.genre || 'Electronic / Dance';
   const year = metadata.year ? String(metadata.year) : '';
 
   const tags = {
     title,
     artist,
-    album,
     genre,
     year,
     comment: { language: 'eng', text: 'Prepared with DeckPrep' }
   };
+  if (album) tags.album = album;
 
   // Embed BPM for Rekordbox / CDJ hardware grid display
   if (metadata.bpm && Number(metadata.bpm) > 0) {

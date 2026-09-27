@@ -17,7 +17,7 @@ function readJsonLines(stdout) {
   });
 }
 
-export async function resolveAudioCandidate({ artist, title, mix, targetDurationSec, directUrl, signal }) {
+export async function resolveAudioCandidate({ artist, title, mix, targetDurationSec, directUrl, strictDirect = false, signal }) {
   const binary = await resolveBinary('yt-dlp');
   if (!binary) throw new Error('yt-dlp engine is missing');
   if (directUrl) {
@@ -29,10 +29,13 @@ export async function resolveAudioCandidate({ artist, title, mix, targetDuration
       if (item && (!targetDurationSec || !item.duration || Math.abs(item.duration - targetDurationSec) <= 10)) {
         return { selectedUrl: directUrl, durationSec: item.duration || 0, directMatch: true, metadata: item };
       }
+      if (strictDirect) throw new Error('The selected recording has a different duration. Review its match.');
     } catch (err) {
       if (signal?.aborted) throw err;
+      if (strictDirect) throw err;
     }
   }
+  if (strictDirect) throw new Error('This recording has no source link');
   const query = buildSearchQuery(artist, title, mix);
   const { stdout } = await execFileAsync(binary, ['--dump-json', '--flat-playlist', '--', `ytsearch5:${query}`], {
     maxBuffer: 15 * 1024 * 1024, signal

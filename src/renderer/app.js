@@ -1,3 +1,5 @@
+import { selectRange } from './selection.js';
+
 const byId = id => document.getElementById(id);
 const inputSource = byId('inputSource');
 const analyzeBtn = byId('analyzeBtn');
@@ -29,6 +31,7 @@ let sessionSaveTimer = null;
 let sessionPromptOpen = false;
 let logCount = 0;
 let cpuCores = 4;
+let selectionAnchorIndex = null;
 
 function presetConcurrency(mode) {
   if (mode === 'gentle') return Math.min(2, Math.max(1, Math.floor(cpuCores / 4)));
@@ -76,7 +79,7 @@ function appendLog(message, className = '') {
   logConsole.appendChild(entry);
   logConsole.scrollTop = logConsole.scrollHeight;
   byId('activityCount').textContent = String(++logCount);
-  if (className === 'err-msg') byId('activityPanel').open = true;
+  if (className === 'err-msg' && !loadedTracks.length) byId('activityPanel').open = true;
 }
 
 function escapeHtml(value) {
@@ -128,9 +131,9 @@ function showPlaylistCard(result) {
 
 function collectionSubtitle(result) {
   if (!result.creator && !result.artworkUrl) return result.title || 'Track queue';
-  if (result.source === 'soundcloud') return 'SoundCloud playlist · Length may be unavailable in quick details';
-  if (result.source === 'youtube') return 'YouTube playlist · Original links';
-  if (result.source === 'spotify' || result.source === 'apple') return `${result.source === 'spotify' ? 'Spotify' : 'Apple Music'} track list · Find audio before exporting`;
+  if (result.source === 'soundcloud') return 'SoundCloud playlist';
+  if (result.source === 'youtube') return 'YouTube playlist';
+  if (result.source === 'spotify' || result.source === 'apple') return `${result.source === 'spotify' ? 'Spotify' : 'Apple Music'} playlist`;
   return result.title || 'Track queue';
 }
 
@@ -194,7 +197,7 @@ function visibleTracks() {
 
 function displayStatus(track) {
   if (!track.selected && !isDownloading) return track.duplicateOf ? `Duplicate of #${String(track.duplicateOf).padStart(3, '0')}` : 'Not selected';
-  if (track.status === 'error') return 'Failed';
+  if (track.status === 'error') return track.blockedOriginal ? 'Find alternative' : 'Failed';
   if (track.status === 'done') return track.duplicateOf ? 'Downloaded · duplicate' : 'Downloaded';
   if (track.status === 'skipped') return 'Already exists';
   if (track.metadataError) return 'Details failed';
@@ -239,10 +242,12 @@ function renderTrackTable() {
     activeDetailIndex = null;
     byId('detailPanel').hidden = true;
   }
-  byId('visibleCount').textContent = `${visible.length} shown`;
+  const filtered = !!byId('queueSearch').value.trim() || byId('queueFilter').value !== 'all';
+  byId('visibleCount').hidden = !filtered;
+  byId('visibleCount').textContent = filtered ? `${visible.length} shown` : '';
   trackTableBody.innerHTML = visible.length ? visible.map(track => `
     <tr id="track-row-${track.index}" data-index="${track.index}" tabindex="0" class="${track.selected ? '' : 'excluded'} ${activeDetailIndex === track.index ? 'active-row' : ''}">
-      <td><input class="track-select" type="checkbox" data-index="${track.index}" aria-label="Select track ${track.index}" ${track.selected ? 'checked' : ''} ${isDownloading || isFetchingDetails || isFindingMatches || isLoadingInput ? 'disabled' : ''}></td>
+      <td><input class="track-select" type="checkbox" data-index="${track.index}" aria-label="Select track ${track.index}; Shift-click for a range" title="Shift-click to select a range" ${track.selected ? 'checked' : ''} ${isDownloading || isFetchingDetails || isFindingMatches || isLoadingInput ? 'disabled' : ''}></td>
       <td>${String(track.index).padStart(3, '0')}</td>
       <td class="track-name" title="${escapeHtml(track.title)}">${escapeHtml(track.title)}</td>
       <td>${escapeHtml(track.artist)}</td>
@@ -284,10 +289,14 @@ function updateMatchingBar() {
   } else {
     const review = needed.filter(track => track.candidates?.length).length;
     const automatic = selectedTracks().filter(track => track.matchState === 'matched' && track.matchUrl).length;
-    byId('matchingHeadline').textContent = `${needed.length} selected ${needed.length === 1 ? 'track needs' : 'tracks need'} a match`;
+    const blocked = needed.filter(track => track.blockedOriginal).length;
+    byId('matchingHeadline').textContent = blocked === needed.length
+      ? `${needed.length} selected ${needed.length === 1 ? 'track needs' : 'tracks need'} another recording`
+      : `${needed.length} selected ${needed.length === 1 ? 'track needs' : 'tracks need'} a match`;
     byId('matchingMessage').textContent = review
       ? `${automatic ? `${automatic} matched automatically. ` : ''}${review} ${review === 1 ? 'track has' : 'tracks have'} candidates to review. Click a track to choose its recording.`
-      : 'Find recordings on SoundCloud and YouTube before downloading.';
+      : blocked ? 'The original source cannot be exported. Search SoundCloud and YouTube for another recording.'
+        : 'Find recordings on SoundCloud and YouTube before downloading.';
   }
   findMatchesBtn.hidden = isFindingMatches;
   findMatchesBtn.disabled = isLoadingInput || isFetchingDetails;
@@ -304,8 +313,8 @@ function updateProgress() {
   byId('globalProgressBar').style.width = `${percent}%`;
   byId('globalProgressBar').classList.toggle('has-errors', !isFetchingDetails && !isFindingMatches && selected.some(track => track.status === 'error'));
   byId('progressStats').textContent = isFetchingDetails ? `${current} / ${total} details fetched`
-    : isFindingMatches ? `${current} / ${total} matches checked` : `${finished} / ${total} processed · ${selected.filter(track => track.status === 'done').length} downloaded · ${selected.filter(track => track.status === 'error').length} failed`;
-  byId('percentText').textContent = isFetchingDetails || isFindingMatches ? `${percent}%` : `${percent}% processed`;
+    : isFindingMatches ? `${current} / ${total} matches checked` : `${finished} / ${total} processed`;
+  byId('percentText').textContent = `${percent}%`;
 }
 
 function updateControls() {
@@ -319,12 +328,10 @@ function updateControls() {
   selectAll.disabled = !visible.length || isDownloading || isFetchingDetails || isFindingMatches || isLoadingInput;
   selectAll.checked = !!visible.length && visible.every(track => track.selected);
   selectAll.indeterminate = visible.some(track => track.selected) && !selectAll.checked;
-  byId('selectVisibleBtn').disabled = selectAll.disabled || visible.every(track => track.selected);
-  byId('selectVisibleBtn').textContent = visible.length ? `Select shown (${visible.length})` : 'Select shown';
   byId('clearSelectionBtn').disabled = !selected.length || isDownloading || isFetchingDetails || isFindingMatches || isLoadingInput;
   startBtn.disabled = isLoadingInput || isDownloading || isFetchingDetails || isFindingMatches || !pending.length || !!needed.length || !!unresolved.length || !destinationDir;
   startBtn.title = needed.length ? 'Fetch details for selected tracks first' : unresolved.length ? 'Review selected audio matches first' : !destinationDir ? 'Choose a destination folder' : !pending.length ? 'All selected tracks are complete' : '';
-  byId('retryFailedBtn').hidden = !loadedTracks.some(track => track.status === 'error') || isDownloading;
+  byId('retryFailedBtn').hidden = !loadedTracks.some(track => track.status === 'error' && !track.blockedOriginal) || isDownloading;
   updateMetadataBar();
   updateMatchingBar();
   updateProgress();
@@ -381,7 +388,7 @@ function renderDetail(track) {
   }
   byId('retryTrackBtn').hidden = (!track.errorMessage && !track.metadataError && !track.matchError) || (track.blockedOriginal && !track.matchError);
   byId('retryTrackBtn').textContent = track.metadataError ? 'Retry details' : track.matchError ? 'Retry match search' : 'Select for retry';
-  byId('findAlternativeBtn').hidden = !track.directUrl || !/protected|no audio format/i.test(track.errorMessage || '') || isFindingMatches;
+  byId('findAlternativeBtn').hidden = !track.directUrl || !/protected|no audio format|short preview/i.test(track.errorMessage || '') || isFindingMatches;
 }
 
 function openDetail(index) {
@@ -404,9 +411,24 @@ byId('openOriginalBtn').addEventListener('click', () => {
 trackTableBody.addEventListener('click', event => {
   if (event.target.closest('input')) return;
   const row = event.target.closest('tr[data-index]');
-  if (row) openDetail(Number(row.dataset.index));
+  if (!row) return;
+  const index = Number(row.dataset.index);
+  if (event.shiftKey || event.ctrlKey) {
+    if (selectionLocked()) return;
+    changeSelection(index, event.shiftKey);
+  } else openDetail(index);
 });
 trackTableBody.addEventListener('keydown', event => {
+  if (event.target.matches('.track-select') && event.key === ' ') {
+    event.preventDefault();
+    if (!selectionLocked()) changeSelection(Number(event.target.dataset.index), event.shiftKey);
+    return;
+  }
+  if (event.target.matches('tr[data-index]') && event.key === ' ' && (event.shiftKey || event.ctrlKey)) {
+    event.preventDefault();
+    if (!selectionLocked()) changeSelection(Number(event.target.dataset.index), event.shiftKey);
+    return;
+  }
   if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('tr[data-index]')) {
     event.preventDefault();
     openDetail(Number(event.target.dataset.index));
@@ -425,16 +447,31 @@ byId('findAlternativeBtn').addEventListener('click', () => {
   if (track) searchMatches([track.index], true);
 });
 
-byId('queueSearch').addEventListener('input', () => { renderTrackTable(); updateControls(); });
-byId('queueFilter').addEventListener('change', () => { renderTrackTable(); updateControls(); });
-byId('selectVisibleBtn').addEventListener('click', () => {
-  visibleTracks().forEach(track => { track.selected = true; });
-  renderTrackTable(); updateControls(); saveQueueSoon();
-});
+byId('queueSearch').addEventListener('input', () => { selectionAnchorIndex = null; renderTrackTable(); updateControls(); });
+byId('queueFilter').addEventListener('change', () => { selectionAnchorIndex = null; renderTrackTable(); updateControls(); });
 byId('clearSelectionBtn').addEventListener('click', () => {
   loadedTracks.forEach(track => { track.selected = false; });
+  selectionAnchorIndex = null;
   renderTrackTable(); updateControls(); saveQueueSoon();
 });
+
+function selectionLocked() {
+  return isDownloading || isFetchingDetails || isFindingMatches || isLoadingInput;
+}
+
+function changeSelection(index, range = false, explicitValue = null) {
+  const track = loadedTracks.find(item => item.index === index);
+  if (!track) return;
+  const anchor = loadedTracks.find(item => item.index === selectionAnchorIndex);
+  const appliedRange = range && anchor && selectRange(visibleTracks(), selectionAnchorIndex, index, anchor.selected);
+  if (!appliedRange) track.selected = explicitValue === null ? !track.selected : explicitValue;
+  selectionAnchorIndex = index;
+  renderTrackTable();
+  updateControls();
+  saveQueueSoon();
+  const checkbox = trackTableBody.querySelector(`.track-select[data-index="${index}"]`);
+  if (checkbox) checkbox.focus({ preventScroll: true });
+}
 
 analyzeBtn.addEventListener('click', async () => {
   const rawInput = inputSource.value.trim();
@@ -452,6 +489,7 @@ analyzeBtn.addEventListener('click', async () => {
     if (!result.success) throw new Error(result.error);
     loadedTracks = result.tracks.map((track, index) => ({ ...track, index: index + 1, selected: true, status: 'pending',
       matchState: track.directUrl ? 'direct' : 'needed' }));
+    selectionAnchorIndex = null;
     markDuplicates(true);
     collectionSource = result.source;
     collectionInfo = { title: result.title, creator: result.creator, artworkUrl: result.artworkUrl, sourceUrl: result.sourceUrl, warning: result.warning };
@@ -487,18 +525,16 @@ analyzeBtn.addEventListener('click', async () => {
   }
 });
 
-trackTableBody.addEventListener('change', event => {
-  if (!event.target.matches('.track-select')) return;
-  const track = loadedTracks.find(item => item.index === Number(event.target.dataset.index));
-  if (!track || isDownloading || isFetchingDetails || isFindingMatches) return;
-  track.selected = event.target.checked;
-  updateRow(track);
-  updateControls();
-  saveQueueSoon();
+trackTableBody.addEventListener('click', event => {
+  const checkbox = event.target.closest('.track-select');
+  if (!checkbox || selectionLocked()) return;
+  event.preventDefault();
+  changeSelection(Number(checkbox.dataset.index), event.shiftKey);
 });
 
 selectAll.addEventListener('change', () => {
   visibleTracks().forEach(track => { track.selected = selectAll.checked; });
+  selectionAnchorIndex = null;
   renderTrackTable();
   updateControls();
   saveQueueSoon();
@@ -595,11 +631,11 @@ window.djAPI.onMatchCompleted(summary => {
   const review = selectedTracks().filter(track => (!track.directUrl || track.blockedOriginal) && !track.matchUrl && track.candidates?.length).length;
   const automatic = selectedTracks().filter(track => track.matchState === 'matched' && track.matchUrl).length;
   const banner = byId('summaryBanner');
-  banner.hidden = false;
+  banner.hidden = !summary.cancelled && !automatic && !summary.errors;
   banner.classList.toggle('has-errors', summary.errors > 0);
-  banner.textContent = summary.cancelled
-    ? `Search stopped · ${summary.completed} checked · ${automatic} matched automatically`
-    : `${automatic} matched automatically · ${review} need review · ${summary.errors} searches failed`;
+  banner.textContent = summary.cancelled ? `Search stopped after ${summary.completed} checked`
+    : [automatic ? `${automatic} matched automatically` : '', review ? `${review} need review` : '',
+      summary.errors ? `${summary.errors} searches failed` : ''].filter(Boolean).join(' · ');
   appendLog(summary.cancelled ? `Match search stopped after ${summary.completed} tracks.`
     : `Match search finished: ${automatic} matched automatically, ${review} need review, ${summary.errors} could not be found.`, summary.errors ? 'err-msg' : 'done-msg');
 });
@@ -625,7 +661,7 @@ byId('openFolderWhenFinished').addEventListener('change', () => {
   saveQueueSoon();
 });
 byId('retryFailedBtn').addEventListener('click', () => {
-  const failed = loadedTracks.filter(track => track.status === 'error');
+  const failed = loadedTracks.filter(track => track.status === 'error' && !track.blockedOriginal);
   loadedTracks.forEach(track => { track.selected = failed.includes(track); });
   byId('queueFilter').value = 'selected';
   renderTrackTable(); updateControls(); saveQueueSoon();
@@ -689,9 +725,21 @@ window.djAPI.onBatchCompleted(summary => {
   const notCompleted = Math.max(0, summary.total - summary.completed - summary.skipped - summary.errors);
   banner.hidden = false;
   banner.classList.toggle('has-errors', summary.errors > 0 || summary.cancelled);
-  banner.textContent = summary.cancelled ? `Stopped · ${summary.completed} downloaded · ${notCompleted} not completed · ${summary.errors} failed`
-    : `${summary.completed} downloaded · ${summary.skipped} already existed · ${summary.errors} failed`;
-  appendLog(summary.cancelled ? 'Batch cancelled.' : `Finished: ${summary.completed} downloaded, ${summary.skipped} skipped, ${summary.errors} errors.`, summary.errors ? 'err-msg' : 'done-msg');
+  const blocked = loadedTracks.filter(track => track.status === 'error' && track.blockedOriginal);
+  const resultText = summary.cancelled ? ['Stopped', summary.completed ? `${summary.completed} downloaded` : '',
+    notCompleted ? `${notCompleted} not completed` : '', summary.errors ? `${summary.errors} need attention` : ''].filter(Boolean).join(' · ')
+    : [summary.completed ? `${summary.completed} downloaded` : '', summary.skipped ? `${summary.skipped} already existed` : '',
+      summary.errors ? `${summary.errors} need attention` : ''].filter(Boolean).join(' · ');
+  banner.replaceChildren(document.createTextNode(resultText));
+  if (blocked.length) {
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'summary-action';
+    action.textContent = `Find another recording for ${blocked.length}`;
+    action.addEventListener('click', () => searchMatches(blocked.map(track => track.index), true));
+    banner.append(action);
+  }
+  appendLog(summary.cancelled ? 'Batch cancelled.' : `Finished: ${summary.completed} downloaded, ${summary.skipped} skipped, ${summary.errors} need attention.`, summary.errors ? 'err-msg' : 'done-msg');
   saveQueueSoon();
 });
 

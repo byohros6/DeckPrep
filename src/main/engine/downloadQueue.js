@@ -21,6 +21,10 @@ export function downloadError(error) {
   return error.message;
 }
 
+export function needsAlternative(error) {
+  return /DRM protected|hls_mp3 format not found|no audio format available|only a short preview/i.test(error.message);
+}
+
 export function verifyMp3File(filePath) {
   const stat = fs.statSync(filePath);
   if (stat.size < 8 * 1024) throw new Error('Output is too small to be a complete MP3');
@@ -79,6 +83,11 @@ export class DownloadQueue {
     this.processTrack(track).catch(err => {
       track.status = this.isCancelled ? 'cancelled' : 'error';
       track.errorMessage = downloadError(err);
+      if (!this.isCancelled && needsAlternative(err)) {
+        track.blockedOriginal = true;
+        track.matchUrl = null;
+        track.matchState = 'needed';
+      }
       if (!this.isCancelled) this.onLog(`Error: ${track.artist} - ${track.title}: ${track.errorMessage}`);
     }).finally(() => {
       this.activeWorkers--;

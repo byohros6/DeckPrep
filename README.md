@@ -2,16 +2,16 @@
 
 DeckPrep is a Windows desktop workspace for preparing DJ crates from public music links and pasted tracklists. Load a playlist, review the tracks and audio matches, choose what to export, and follow each file through to a tagged MP3. The queue can be restored after an interrupted session.
 
-**Current version:** 1.4.0-beta.6 · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md)
+**Current version:** 1.4.0-beta.7 · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md)
 
 ![Playlist review in DeckPrep](docs/images/playlist-review.png)
 
 ## How it works
 
 1. Paste a public track, album, or playlist link, several links on separate lines, or an artist–title tracklist. Click **Load tracks**.
-2. Search and filter the queue, inspect a track, and uncheck anything you do not want. **Select shown** selects only rows in the current search/filter; **Clear all** deselects the whole queue. Repeated artist/title/version entries are marked as possible duplicates, with later copies unchecked by default. SoundCloud playlists fill in track titles and artists before audio downloads start.
+2. Search and filter the queue, inspect a track, and uncheck anything you do not want. Shift-click a row checkbox to select or clear the range from the last checkbox; Ctrl-click a row to toggle it. The checkbox at the top selects or clears all **shown** rows, and **Clear selection** clears the whole queue. Repeated artist/title/version entries are marked as possible duplicates, with later copies unchecked by default. SoundCloud playlists fill in track titles and artists before audio downloads start.
 3. For catalog-only imports and tracklists, click **Find matches**. DeckPrep searches YouTube first, then SoundCloud when a track still needs a match. It compares artist, title, version, and available duration, accepts close matches automatically, and leaves uncertain versions for review.
-4. Choose a destination and click **Download selected**. Watch per-track status, review the batch summary, and select failed rows to retry. If a source recording is protected, open its track details to find another recording; choose the version you want before exporting.
+4. Choose a destination and click **Download selected**. Watch per-track status and review the batch summary. If a source recording is protected, use **Find another recording** in the result banner or track details; choose the version you want before exporting. Other failed rows can be selected for retry.
    Turn on **Open folder when finished** beside the destination if you want File Explorer to appear after a successful batch. It is off by default; **Open folder** remains available at the bottom of the app.
 5. If you close the app before finishing, it asks whether to restore or discard the saved queue when reopened. Restoring does not start downloads.
 

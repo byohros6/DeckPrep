@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0-beta.7
+
+- Added Shift-click range selection across visible tracks and Ctrl-click row toggling, with keyboard access to the same actions.
+- Removed duplicate queue controls and counts; kept the header checkbox for selecting all shown tracks and a single clear-selection action.
+- Made protected-source failures lead to a direct alternative-recording search, while keeping per-track reasons visible in details.
+- Kept routine download errors in the track list and result banner instead of automatically expanding the activity log.
+- Rechecked the packaged app with the 429-track SoundCloud playlist, keyboard range selection, protected-source recovery, and a verified MP3 export; refreshed both README screenshots.
+
 ## 1.4.0-beta.6
 
 - Added an **Open folder when finished** option near the destination. It is off by default, saved across sessions, and only opens the destination after a successful batch when enabled.

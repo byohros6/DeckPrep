@@ -54,6 +54,10 @@ img{-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
 .candidate strong{font-size:12px}.candidate span{font-size:10px;color:#9eacb8;margin-top:5px}
 .summary-banner{padding:8px 19px;background:#203028;border-top:1px solid #3c6350;color:#c5e4d0;font-size:11px}
 .summary-banner.has-errors{background:#302521;border-color:#745343;color:#f2c5ad}
+.summary-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:37px}
+.summary-action{border:0;background:transparent;color:#f6d4b8;text-decoration:underline;text-underline-offset:3px;padding:3px 0;font-size:11px;font-weight:600}
+.summary-action:hover{color:#fff}
+.summary-action:focus-visible{outline:2px solid #89bfff;outline-offset:3px}
 .dialog-backdrop{position:fixed;inset:0;z-index:100;background:#080b0dcc;display:grid;place-items:center;padding:20px}
 .restore-dialog{width:min(440px,100%);background:#22262a;border:1px solid #525a62;box-shadow:0 18px 55px #000a;padding:24px}
 .restore-dialog h2{font-size:20px;margin:10px 0}.restore-dialog p{color:#bac4cd;line-height:1.5;margin:0 0 24px}

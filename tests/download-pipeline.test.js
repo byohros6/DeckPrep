@@ -8,7 +8,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import NodeID3 from 'node-id3';
 import { resolveBinary } from '../src/main/engine/binaryManager.js';
-import { DownloadQueue, downloadError } from '../src/main/engine/downloadQueue.js';
+import { DownloadQueue, downloadError, needsAlternative } from '../src/main/engine/downloadQueue.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -61,4 +61,21 @@ test('same song titles get a safe suffix instead of overwriting another export',
 
 test('protected source failures explain that another recording is needed', () => {
   assert.match(downloadError(new Error('ERROR: This video is DRM protected')), /protected and cannot be exported/i);
+  assert.equal(needsAlternative(new Error('ERROR: This video is DRM protected')), true);
+  assert.equal(needsAlternative(new Error('spawn ffmpeg ENOENT')), false);
+});
+
+test('a protected recording remains in the queue for an alternative search', async () => {
+  let completedTrack;
+  const summary = await new Promise(resolve => {
+    const queue = new DownloadQueue({ destinationDir: 'C:\\Music', concurrency: 1,
+      onTrackCompleted: track => { completedTrack = track; }, onAllCompleted: resolve });
+    queue.load([{ index: 1, artist: 'Artist', title: 'Title', directUrl: 'https://soundcloud.com/example/track', matchUrl: 'https://youtube.com/watch?v=old' }]);
+    queue.processTrack = async () => { throw new Error('ERROR: This video is DRM protected'); };
+    queue.start();
+  });
+  assert.equal(summary.errors, 1);
+  assert.equal(completedTrack.status, 'error');
+  assert.equal(completedTrack.blockedOriginal, true);
+  assert.equal(completedTrack.matchUrl, null);
 });

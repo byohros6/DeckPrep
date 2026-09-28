@@ -1,6 +1,16 @@
 const { contextBridge, ipcRenderer } = require('electron');
 // Expose a narrow bridge for source analysis and batch downloads.
 contextBridge.exposeInMainWorld('djAPI', {
+  importLocal: folder => ipcRenderer.invoke('import-local', folder),
+  cancelImport: () => ipcRenderer.invoke('cancel-import'),
+  reviewAudio: (id, decision) => ipcRenderer.invoke('review-audio', id, decision),
+  previewUrl: id => 'deckprep-audio://track/' + encodeURIComponent(id),
+  exportCrate: indices => ipcRenderer.invoke('export-crate', indices),
+  cancelExport: () => ipcRenderer.invoke('cancel-export'),
+  exportDiagnostics: () => ipcRenderer.invoke('export-diagnostics'),
+  openReleases: () => ipcRenderer.invoke('open-releases'),
+  onFlushBeforeClose: callback => ipcRenderer.on('flush-before-close', callback),
+  acknowledgeFlush: success => ipcRenderer.send('renderer-flushed', success),
   checkBinaries: () => ipcRenderer.invoke('check-binaries'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   getSavedSession: () => ipcRenderer.invoke('get-saved-session'),

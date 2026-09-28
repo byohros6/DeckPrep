@@ -45,7 +45,7 @@ function candidateSignals(track, candidate) {
   const version = requestedVersion ? recall(requestedVersion, candidate.title) : 1;
   const conflicts = versionConflicts(track, candidate);
   const versionCompatible = !conflicts.length && (requestedVersion
-    ? version >= 0.75
+    ? version >= 1
     : !candidateVersion || /\boriginal mix\b|\balbum version\b/i.test(candidateVersion));
   const durationDelta = track.durationSec > 0 && candidate.durationSec > 0
     ? Math.abs(track.durationSec - candidate.durationSec) : Infinity;
@@ -65,6 +65,7 @@ export function scoreCandidate(track, candidate) {
 export function rankCandidates(track, candidates) {
   const unique = new Map();
   for (const candidate of candidates) {
+    if (track.blockedUrls?.includes(candidate.url)) continue;
     if (track.blockedOriginal && (candidate.url === track.directUrl
       || (track.soundcloudId && candidate.provider === 'SoundCloud' && String(candidate.sourceId) === String(track.soundcloudId)))) continue;
     if (candidate.url && !unique.has(candidate.url)) {

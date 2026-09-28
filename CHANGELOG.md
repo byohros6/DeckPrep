@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.0-beta.9 (implementation preview)
+
+- Reject explicit conflicting recordings (live, instrumental, clean/explicit, speed variants) and preserve Unicode matching and candidate evidence.
+- Serialize versioned session saves, retain a recovery backup, and persist main-process progress.
+- Decode audio fully before success, inspect possible silent endings, and require preview/review before applying a trim. Preserve original audio.
+- Add local audio imports, waveform/audio review, verified output manifests, and ordered relative-path M3U8 crate export.
+- Bound processing stages, preserve multi-link warnings, and keep source bitrate distinct from output quality.
+- Enable renderer sandboxing and validate IPC senders; update Electron to 44.4.5 and packaging to 26.15.3.
+- Add actual Electron review/restore/trim/export tests, generated-audio regression tests, synthetic scale checks, and persistent plan/progress/acceptance documentation.
+- This is a development beta, not a completed stable release: real Rekordbox, multi-machine beta, representative matching precision, signing and redistribution gates remain open.
+
+
 ## 1.4.0-beta.8
 
 - Automatically search for another SoundCloud or YouTube recording after a selected source proves protected or lacks exportable audio, and continue exporting a confident match once. Never retry the same blocked SoundCloud track as an alternative.

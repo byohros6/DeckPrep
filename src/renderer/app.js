@@ -1,3 +1,4 @@
+import { createAudioReview } from './audioReview.js';
 import { selectRange } from './selection.js';
 
 const byId = id => document.getElementById(id);
@@ -33,6 +34,13 @@ let logCount = 0;
 let cpuCores = 4;
 let selectionAnchorIndex = null;
 let automaticRecoveryIndices = null;
+let isExporting = false;
+const audioReview = createAudioReview(byId('audioReview'), track => {
+  const current = loadedTracks.find(item => item.id === track.id);
+  if (current) Object.assign(current, track);
+  renderTrackTable(); updateControls(); saveQueueSoon(0);
+  appendLog('Audio choice saved. Choose Download selected to finish the approved export.', 'sys-msg');
+}, message => appendLog(message, 'err-msg'));
 
 function presetConcurrency(mode) {
   if (mode === 'gentle') return Math.min(2, Math.max(1, Math.floor(cpuCores / 4)));
@@ -78,6 +86,7 @@ function appendLog(message, className = '') {
   entry.className = `log-entry ${className}`;
   entry.textContent = message;
   logConsole.appendChild(entry);
+  while (logConsole.children.length > 500) logConsole.firstChild.remove();
   logConsole.scrollTop = logConsole.scrollHeight;
   byId('activityCount').textContent = String(++logCount);
   if (className === 'err-msg' && !loadedTracks.length) byId('activityPanel').open = true;
@@ -93,20 +102,22 @@ function formatDuration(value) {
   return seconds ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : '—';
 }
 
-function saveQueueSoon(delay = 400) {
-  if (!loadedTracks.length || sessionPromptOpen) return;
+function saveQueueNow() {
   clearTimeout(sessionSaveTimer);
-  sessionSaveTimer = setTimeout(() => {
-    const selected = selectedTracks();
-    const complete = selected.length && selected.every(track => ['done', 'skipped'].includes(track.status));
-    window.djAPI.saveSession({
-      input: inputSource.value, source: collectionSource, collection: collectionInfo,
-      tracks: loadedTracks, destinationDir, mode: byId('crateMode').value,
-      openFolderWhenFinished: byId('openFolderWhenFinished').checked,
-      concurrency: Number(byId('concurrencyRange').value), performanceMode: byId('speedMode').value,
-      phase: isDownloading ? 'downloading' : complete ? 'completed' : 'review'
-    }).catch(err => appendLog(`Could not save session: ${err.message}`, 'err-msg'));
-  }, delay);
+  if (!loadedTracks.length || sessionPromptOpen) return Promise.resolve();
+  const selected = selectedTracks();
+  const complete = selected.length && selected.every(track => ['done', 'skipped'].includes(track.status));
+  return window.djAPI.saveSession({
+    input: inputSource.value, source: collectionSource, collection: collectionInfo,
+    tracks: loadedTracks, destinationDir, mode: byId('crateMode').value,
+    openFolderWhenFinished: byId('openFolderWhenFinished').checked,
+    concurrency: Number(byId('concurrencyRange').value), performanceMode: byId('speedMode').value,
+    phase: isDownloading ? 'downloading' : complete ? 'completed' : 'review'
+  });
+}
+function saveQueueSoon(delay = 150) {
+  clearTimeout(sessionSaveTimer);
+  sessionSaveTimer = setTimeout(() => saveQueueNow().catch(error => appendLog('Could not save session: ' + error.message, 'err-msg')), delay);
 }
 
 function showPlaylistCard(result) {
@@ -167,7 +178,7 @@ function markDuplicates(excludeNew = false) {
   let changed = false;
   for (const track of loadedTracks) {
     const usable = !track.needsMetadata && track.title && track.artist && track.artist !== '—';
-    const key = usable ? [track.artist, track.title, track.mix || ''].map(value => value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim()).join('|') : '';
+    const key = usable ? [track.artist, track.title, track.mix || ''].map(value => value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()).join('|') : '';
     const first = key ? firstBySong.get(key) : null;
     const duplicateOf = first || null;
     if (track.duplicateOf !== duplicateOf) {
@@ -179,9 +190,9 @@ function markDuplicates(excludeNew = false) {
   }
   return changed;
 }
-function pendingTracks() { return selectedTracks().filter(track => !['done', 'skipped'].includes(track.status)); }
+function pendingTracks() { return selectedTracks().filter(track => !['done', 'skipped', 'audio_review'].includes(track.status)); }
 function detailsNeeded() { return selectedTracks().filter(track => track.needsMetadata); }
-function matchesNeeded() { return selectedTracks().filter(track => !track.needsMetadata && (!track.directUrl || track.blockedOriginal) && !track.matchUrl); }
+function matchesNeeded() { return selectedTracks().filter(track => !track.needsMetadata && (!track.localPath && (!track.directUrl || track.blockedOriginal)) && !track.matchUrl); }
 
 function visibleTracks() {
   const query = byId('queueSearch').value.trim().toLowerCase();
@@ -189,7 +200,7 @@ function visibleTracks() {
   return loadedTracks.filter(track => {
     if (query && !`${track.title} ${track.artist} ${track.mix || ''}`.toLowerCase().includes(query)) return false;
     if (filter === 'selected') return track.selected;
-    if (filter === 'review') return track.needsMetadata || track.matchState === 'review' || ((!track.directUrl || track.blockedOriginal) && !track.matchUrl);
+    if (filter === 'review') return track.status === 'audio_review' || track.needsMetadata || track.matchState === 'review' || ((!track.localPath && (!track.directUrl || track.blockedOriginal)) && !track.matchUrl);
     if (filter === 'failed') return track.status === 'error' || !!track.metadataError || !!track.matchError;
     if (filter === 'done') return ['done', 'skipped'].includes(track.status);
     return true;
@@ -197,14 +208,16 @@ function visibleTracks() {
 }
 
 function displayStatus(track) {
+  if (track.status === 'audio_review') return 'Review ending';
+  if (track.status === 'inspecting') return 'Checking audio';
   if (!track.selected && !isDownloading) return track.duplicateOf ? `Duplicate of #${String(track.duplicateOf).padStart(3, '0')}` : 'Not selected';
   if (track.status === 'error') return track.blockedOriginal ? isFindingMatches ? 'Finding alternative' : 'Find alternative' : 'Failed';
-  if (track.status === 'done') return track.duplicateOf ? 'Downloaded · duplicate' : 'Downloaded';
+  if (track.status === 'done') return track.duplicateOf ? 'Verified · duplicate' : 'Verified';
   if (track.status === 'skipped') return 'Already exists';
   if (track.metadataError) return 'Details failed';
   if (track.needsMetadata) return 'Details needed';
   if (track.matchError) return 'Match failed';
-  if ((!track.directUrl || track.blockedOriginal) && !track.matchUrl) return track.blockedOriginal ? track.candidates?.length ? 'Review alternative' : 'Find alternative' : track.candidates?.length ? 'Review match' : 'Find match';
+  if ((!track.localPath && (!track.directUrl || track.blockedOriginal)) && !track.matchUrl) return track.blockedOriginal ? track.candidates?.length ? 'Review alternative' : 'Find alternative' : track.candidates?.length ? 'Review match' : 'Find match';
   if (track.status === 'pending' && track.matchState === 'matched') return 'Auto matched';
   if (track.status === 'pending' && track.matchState === 'chosen') return 'Match chosen';
   return track.status === 'pending' ? 'Ready' : track.status;
@@ -216,7 +229,7 @@ function statusClass(track) {
   if (track.metadataError) return 'error';
   if (track.needsMetadata) return 'needs-details';
   if (track.matchError) return 'error';
-  if ((!track.directUrl || track.blockedOriginal) && !track.matchUrl) return 'needs-details';
+  if ((!track.localPath && (!track.directUrl || track.blockedOriginal)) && !track.matchUrl) return 'needs-details';
   if (track.status === 'pending' && track.matchUrl) return 'matched';
   return track.status;
 }
@@ -333,12 +346,17 @@ function updateControls() {
   startBtn.disabled = isLoadingInput || isDownloading || isFetchingDetails || isFindingMatches || !pending.length || !!needed.length || !!unresolved.length || !destinationDir;
   startBtn.title = needed.length ? 'Fetch details for selected tracks first' : unresolved.length ? 'Review selected audio matches first' : !destinationDir ? 'Choose a destination folder' : !pending.length ? 'All selected tracks are complete' : '';
   byId('retryFailedBtn').hidden = !loadedTracks.some(track => track.status === 'error' && !track.blockedOriginal) || isDownloading;
+  byId('cancelImportBtn').hidden = !isLoadingInput;
+  byId('localFilesBtn').disabled = byId('localFolderBtn').disabled = isDownloading || isFetchingDetails || isFindingMatches || isLoadingInput || isExporting;
+  byId('exportCrateBtn').disabled = isDownloading || isFetchingDetails || isFindingMatches || isLoadingInput || isExporting || !selected.some(track => ['done', 'skipped'].includes(track.status));
+  if (isExporting) startBtn.disabled = analyzeBtn.disabled = true;
   updateMetadataBar();
   updateMatchingBar();
   updateProgress();
 }
 
 function renderDetail(track) {
+  audioReview.render(track, isDownloading || isFindingMatches || isFetchingDetails || isExporting);
   byId('detailPanel').hidden = false;
   byId('detailNumber').textContent = `TRACK ${String(track.index).padStart(3, '0')}`;
   byId('detailTitle').textContent = track.title;
@@ -346,7 +364,7 @@ function renderDetail(track) {
   byId('openOriginalBtn').hidden = !(track.sourceUrl || track.directUrl);
   byId('detailMix').textContent = track.mix || '—';
   byId('detailDuration').textContent = formatDuration(track.durationSec);
-  byId('detailSource').textContent = track.source === 'apple' ? 'Apple Music' : track.source === 'youtube' ? 'YouTube' : track.source === 'soundcloud' ? 'SoundCloud' : track.source === 'spotify' ? 'Spotify' : 'Tracklist';
+  byId('detailSource').textContent = track.source === 'local' && track.localPath ? 'Local audio' : track.source === 'apple' ? 'Apple Music' : track.source === 'youtube' ? 'YouTube' : track.source === 'soundcloud' ? 'SoundCloud' : track.source === 'spotify' ? 'Spotify' : 'Tracklist';
   const help = track.errorMessage || track.metadataError || track.matchError;
   byId('detailHelp').textContent = help || (track.duplicateOf ? `Same artist, title, and version as track ${String(track.duplicateOf).padStart(3, '0')}. This is a separate source link; leave it unchecked unless you want both copies.`
     : track.matchUrl && track.matchState === 'matched' ? 'A close match was selected automatically. Open it to check or choose another.'
@@ -367,6 +385,8 @@ function renderDetail(track) {
     const details = document.createElement('span');
     const quality = candidate.score >= 0.8 ? 'Likely' : candidate.score >= 0.55 ? 'Possible' : 'Weak';
     details.textContent = `${candidate.provider} · ${candidate.artist || 'Unknown artist'} · ${formatDuration(candidate.durationSec)} · ${quality} match`;
+    button.title = candidate.reason || '';
+    button.disabled = isDownloading || isFindingMatches || isFetchingDetails || isExporting;
     button.append(title, details);
     button.addEventListener('click', async () => {
       const result = await window.djAPI.chooseMatch(track.index, candidate.url);
@@ -402,6 +422,7 @@ function openDetail(index) {
 
 byId('closeDetailBtn').addEventListener('click', () => {
   activeDetailIndex = null;
+  audioReview.hide();
   byId('detailPanel').hidden = true;
   renderTrackTable();
 });
@@ -488,27 +509,7 @@ analyzeBtn.addEventListener('click', async () => {
   try {
     const result = await window.djAPI.parseInput(rawInput);
     if (!result.success) throw new Error(result.error);
-    loadedTracks = result.tracks.map((track, index) => ({ ...track, index: index + 1, selected: true, status: 'pending',
-      matchState: track.directUrl ? 'direct' : 'needed' }));
-    selectionAnchorIndex = null;
-    markDuplicates(true);
-    collectionSource = result.source;
-    collectionInfo = { title: result.title, creator: result.creator, artworkUrl: result.artworkUrl, sourceUrl: result.sourceUrl, warning: result.warning };
-    byId('queueSearch').value = '';
-    byId('queueFilter').value = 'all';
-    activeDetailIndex = null;
-    byId('detailPanel').hidden = true;
-    byId('summaryBanner').hidden = true;
-    byId('trackCount').textContent = loadedTracks.length;
-    byId('collectionTitle').textContent = collectionSubtitle(result);
-    showPlaylistCard(result);
-    showSourceWarning(result.warning);
-    renderTrackTable();
-    updateControls();
-    appendLog(`Loaded ${loadedTracks.length} tracks from ${result.source}.`, 'sys-msg');
-    byId('sourceHint').textContent = 'Paste a track, playlist, or several links.';
-    byId('sourceHint').classList.remove('error');
-    if (result.warning) appendLog(result.warning, 'sys-msg');
+    installResult(result);
     autoFetch = loadedTracks.some(track => track.needsMetadata && track.soundcloudId);
   } catch (err) {
     appendLog(`Could not load tracks: ${err.message}`, 'err-msg');
@@ -567,7 +568,7 @@ cancelDetailsBtn.addEventListener('click', async () => {
 });
 
 window.djAPI.onMetadataProgress(({ track, completed, total }) => {
-  const item = loadedTracks.find(entry => entry.index === track.index);
+  const item = loadedTracks.find(entry => entry.id === track.id);
   if (item) {
     Object.assign(item, track);
     if (markDuplicates(true)) renderTrackTable();
@@ -634,7 +635,7 @@ window.djAPI.onMatchCompleted(summary => {
   analyzeBtn.disabled = false;
   cancelMatchesBtn.disabled = false;
   renderTrackTable(); updateControls(); saveQueueSoon();
-  const review = selectedTracks().filter(track => (!track.directUrl || track.blockedOriginal) && !track.matchUrl && track.candidates?.length).length;
+  const review = selectedTracks().filter(track => (!track.localPath && (!track.directUrl || track.blockedOriginal)) && !track.matchUrl && track.candidates?.length).length;
   const automatic = selectedTracks().filter(track => track.matchState === 'matched' && track.matchUrl).length;
   const banner = byId('summaryBanner');
   banner.hidden = !summary.cancelled && !automatic && !summary.errors;
@@ -744,14 +745,15 @@ window.djAPI.onBatchCompleted(summary => {
   const downloaded = selected.filter(track => track.status === 'done').length;
   const skipped = selected.filter(track => track.status === 'skipped').length;
   const errors = selected.filter(track => track.status === 'error').length;
+  const review = selected.filter(track => track.status === 'audio_review').length;
   const notCompleted = selected.length - downloaded - skipped - errors;
   banner.hidden = false;
-  banner.classList.toggle('has-errors', errors > 0 || summary.cancelled);
+  banner.classList.toggle('has-errors', errors > 0 || review > 0 || summary.cancelled);
   const blocked = loadedTracks.filter(track => track.status === 'error' && track.blockedOriginal);
   const resultText = summary.cancelled ? ['Stopped', downloaded ? `${downloaded} downloaded` : '',
-    notCompleted ? `${notCompleted} not completed` : '', errors ? `${errors} need attention` : ''].filter(Boolean).join(' · ')
+    notCompleted ? `${notCompleted} not completed` : '', errors ? `${errors} need attention` : '', review ? `${review} need ending review` : ''].filter(Boolean).join(' · ')
     : [downloaded ? `${downloaded} downloaded` : '', skipped ? `${skipped} already existed` : '',
-      errors ? `${errors} need attention` : ''].filter(Boolean).join(' · ');
+      errors ? `${errors} need attention` : '', review ? `${review} need ending review` : ''].filter(Boolean).join(' · ');
   banner.replaceChildren(document.createTextNode(resultText));
   if (blocked.length) {
     const action = document.createElement('button');
@@ -861,3 +863,67 @@ byId('discardSessionBtn').addEventListener('click', async () => {
     appendLog(err.message, 'err-msg');
   }
 })();
+
+function installResult(result) {
+    loadedTracks = result.tracks.map((track, index) => ({ ...track, index: index + 1, selected: true, status: 'pending',
+      matchState: track.directUrl || track.localPath ? 'direct' : 'needed' }));
+    selectionAnchorIndex = null;
+    markDuplicates(true);
+    collectionSource = result.source;
+    collectionInfo = { title: result.title, creator: result.creator, artworkUrl: result.artworkUrl, sourceUrl: result.sourceUrl, warning: result.warning };
+    byId('queueSearch').value = '';
+    byId('queueFilter').value = 'all';
+    activeDetailIndex = null;
+    byId('detailPanel').hidden = true;
+    byId('summaryBanner').hidden = true;
+    byId('trackCount').textContent = loadedTracks.length;
+    byId('collectionTitle').textContent = collectionSubtitle(result);
+    showPlaylistCard(result);
+    showSourceWarning(result.warning);
+    renderTrackTable();
+    updateControls();
+    appendLog(`Loaded ${loadedTracks.length} tracks from ${result.source}.`, 'sys-msg');
+    byId('sourceHint').textContent = 'Paste a track, playlist, or several links.';
+    byId('sourceHint').classList.remove('error');
+    if (result.warning) appendLog(result.warning, 'sys-msg');
+
+}
+
+async function loadLocal(folder) {
+  isLoadingInput = true; updateControls();
+  try {
+    const result = await window.djAPI.importLocal(folder);
+    if (result.cancelled) return;
+    if (!result.success) throw new Error(result.error);
+    installResult(result); saveQueueSoon(0);
+  } catch (error) { appendLog(error.message, 'err-msg'); }
+  finally { isLoadingInput = false; updateControls(); }
+}
+byId('localFilesBtn').onclick = () => loadLocal(false);
+byId('localFolderBtn').onclick = () => loadLocal(true);
+byId('cancelImportBtn').onclick = () => window.djAPI.cancelImport();
+byId('diagnosticsBtn').onclick = async () => {
+  try { const result = await window.djAPI.exportDiagnostics(); if (result.success) appendLog('Redacted diagnostics saved.', 'sys-msg'); }
+  catch (error) { appendLog(error.message, 'err-msg'); }
+};
+byId('updatesBtn').onclick = () => window.djAPI.openReleases();
+byId('cancelExportBtn').onclick = () => window.djAPI.cancelExport();
+byId('exportCrateBtn').onclick = async () => {
+  isExporting = true; byId('cancelExportBtn').hidden = false; updateControls();
+  try {
+    const result = await window.djAPI.exportCrate(selectedTracks().map(track => track.index));
+    if (!result.success) throw new Error(result.error);
+    const banner = byId('summaryBanner'); banner.hidden = false;
+    banner.textContent = result.included + ' verified tracks exported to a playlist; ' + result.excluded.length + ' excluded. In Rekordbox choose File → Import → Import Playlist.';
+    appendLog('Crate playlist: ' + result.playlist, 'done-msg');
+  } catch (error) { appendLog(error.message, 'err-msg'); }
+  finally { isExporting = false; analyzeBtn.disabled = false; byId('cancelExportBtn').hidden = true; updateControls(); }
+};
+window.djAPI.onFlushBeforeClose(async () => {
+  try { await saveQueueNow(); window.djAPI.acknowledgeFlush(true); }
+  catch { window.djAPI.acknowledgeFlush(false); }
+});
+document.addEventListener('keydown', event => {
+  if (event.ctrlKey && event.key.toLowerCase() === 'f') { event.preventDefault(); byId('queueSearch').focus(); }
+  if (event.key === 'Escape') { audioReview.hide(); byId('closeDetailBtn').click(); }
+});

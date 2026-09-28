@@ -1,11 +1,17 @@
 import { app, ipcMain, dialog, shell } from 'electron';
 import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { randomUUID } from 'node:crypto';
+import { validateSender, validSelection, validatePreferences } from './security.js';
+import { importLocal } from './engine/localImport.js';
+import { exportCrate } from './engine/crateExport.js';
 import fs from 'node:fs';
-import { checkBinaries } from './engine/binaryManager.js';
+import { checkBinaries, engineVersions } from './engine/binaryManager.js';
 import { parseInput, fetchTrackDetails } from './engine/sources.js';
 import { DownloadQueue, verifyMp3File } from './engine/downloadQueue.js';
 import { findAudioMatches, rankCandidates } from './engine/matching.js';
-import { readSession, saveSession, clearSession } from './sessionStore.js';
+import { readSession, saveSession, clearSession, flushSession } from './sessionStore.js';
 
 let activeQueue = null;
 let currentMainWindow = null;
@@ -14,7 +20,35 @@ let selectedDestination = null;
 let parsedTracks = [];
 let activeMetadata = null;
 let activeMatching = null;
-let activeParse = false;
+let activeParse = null;
+let sessionContext = {};
+let exportController = null;
+let progressSaveTimer;
+const rendererUrl = pathToFileURL(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../renderer/index.html')).href;
+const busy = () => activeQueue || activeMetadata || activeMatching || activeParse || exportController;
+function persist() { return parsedTracks.length ? saveSession({...sessionContext, tracks: parsedTracks, destinationDir: selectedDestination || ''}) : Promise.resolve(); }
+function installTracks(result) {
+  if (!result.tracks.length) throw new Error(result.warning || 'No tracks could be imported');
+  if (result.tracks.length > 10000) throw new Error('Queues are limited to 10,000 tracks');
+  parsedTracks = result.tracks.map((track, index) => ({...track, id: randomUUID(), index: index + 1, selected: true, status: 'pending', requested: {title: track.title, artist: track.artist, mix: track.mix || '', durationSec: track.durationSec || 0}}));
+  sessionContext = {source: result.source, collection: {title: result.title, creator: result.creator, artworkUrl: result.artworkUrl, sourceUrl: result.sourceUrl, warning: result.warning}};
+  return {...result, tracks: parsedTracks};
+}
+export async function shutdownJobs() {
+  clearTimeout(progressSaveTimer);
+  activeParse?.abort(); activeMetadata?.controller.abort(); activeMatching?.controller.abort(); exportController?.abort();
+  const queue = activeQueue; queue?.cancel();
+  if (queue) await queue.completion;
+  await persist(); await flushSession();
+}
+export function previewPath(id) {
+  const track = parsedTracks.find(item => item.id === id);
+  if (!track?.inspection || track.status !== 'audio_review') return null;
+  const file = track?.reviewSourcePath || track?.localPath;
+  if (!file || !fs.existsSync(file)) return null;
+  return file;
+}
+
 
 function owner() {
   return currentMainWindow && !currentMainWindow.isDestroyed() ? currentMainWindow : undefined;
@@ -26,6 +60,15 @@ function openDialog(options) {
 }
 
 function send(channel, payload) {
+  if (payload?.track) {
+    const track = parsedTracks.find(item => item.id === payload.track.id);
+    if (!track) return;
+    Object.assign(track, payload.track);
+  }
+  if (channel.endsWith('progress') || channel.endsWith('completed')) {
+    clearTimeout(progressSaveTimer);
+    progressSaveTimer = setTimeout(() => persist().catch(error => { if (owner()) currentMainWindow.webContents.send('log', 'Could not save progress: ' + error.message); }), 150);
+  }
   if (owner()) currentMainWindow.webContents.send(channel, payload);
 }
 
@@ -33,25 +76,40 @@ export function registerIpcHandlers(mainWindow) {
   currentMainWindow = mainWindow;
   if (registered) return;
   registered = true;
+  const handle = (channel, callback) => ipcMain.handle(channel, async (event, ...args) => {
+    validateSender(event, owner()?.webContents, rendererUrl);
+    return callback(event, ...args);
+  });
 
-  ipcMain.handle('check-binaries', checkBinaries);
-  ipcMain.handle('get-app-version', () => app.getVersion());
-  ipcMain.handle('get-saved-session', readSession);
-  ipcMain.handle('save-session', (_, session) => saveSession(session));
-  ipcMain.handle('clear-session', async () => { await clearSession(); parsedTracks = []; selectedDestination = null; });
-  ipcMain.handle('restore-session', async () => {
+  handle('check-binaries', checkBinaries);
+  handle('get-app-version', () => app.getVersion());
+  handle('get-saved-session', readSession);
+  handle('save-session', async (_, session) => {
+    if (!session || !Array.isArray(session.tracks) || session.tracks.length > 10000 || session.tracks.some(track => !track || typeof track.id !== 'string' || typeof track.selected !== 'boolean')) throw new Error('Invalid session');
+    const preferences = validatePreferences(session);
+    const byId = new Map(session.tracks.map(track => [track.id, track]));
+    for (const track of parsedTracks) {
+      const incoming = byId.get(track.id);
+      if (incoming) { track.selected = incoming.selected !== false; track.duplicateOf = incoming.duplicateOf; }
+    }
+    Object.assign(sessionContext, preferences);
+    await persist();
+  });
+  handle('clear-session', async () => { if (busy()) throw new Error('Stop the current task first'); parsedTracks = []; sessionContext = {}; selectedDestination = null; await clearSession(); });
+  handle('restore-session', async () => {
     if (activeQueue || activeMetadata || activeMatching || activeParse) return { success: false, error: 'Wait for the current task first' };
     const session = await readSession();
     if (!session) return { success: false, error: 'No saved session' };
     let reusedMatches = 0;
-    session.tracks = session.tracks.map((track, index) => {
+    const restoredTracks = [];
+    for (const [index, track] of session.tracks.entries()) {
       const restored = { ...track, index: index + 1 };
       if (session.source === 'soundcloud' && restored.album === session.collection?.title) restored.album = '';
       if (['done', 'skipped'].includes(restored.status)) {
-        try { if (!restored.outputPath) throw new Error('No output'); verifyMp3File(restored.outputPath); }
+        try { if (!restored.outputPath) throw new Error('No output'); await verifyMp3File(restored.outputPath); }
         catch { restored.status = 'pending'; restored.outputPath = null; }
       }
-      if (['resolving', 'searching', 'downloading', 'transcoding', 'tagging'].includes(restored.status)) restored.status = 'pending';
+      if (['resolving', 'searching', 'downloading', 'transcoding', 'tagging', 'inspecting'].includes(restored.status)) restored.status = 'pending';
       if (!restored.directUrl && !restored.matchUrl && restored.candidates?.length) {
         const ranked = rankCandidates(restored, restored.candidates);
         restored.candidates = ranked.candidates;
@@ -62,17 +120,19 @@ export function registerIpcHandlers(mainWindow) {
           reusedMatches++;
         }
       }
-      return restored;
-    });
+      restoredTracks.push(restored);
+    }
+    session.tracks = restoredTracks;
+    sessionContext = {...session}; delete sessionContext.tracks;
     parsedTracks = session.tracks.map(track => ({ ...track }));
     selectedDestination = session.destinationDir && fs.existsSync(session.destinationDir) ? session.destinationDir : null;
     return { success: true, session: { ...session, destinationDir: selectedDestination || '', reusedMatches } };
   });
-  ipcMain.handle('get-system-info', () => {
+  handle('get-system-info', () => {
     const cpuCores = os.cpus()?.length || 4;
     return { cpuCores, defaultConcurrency: Math.min(4, Math.max(1, cpuCores - 2)) };
   });
-  ipcMain.handle('select-folder', async () => {
+  handle('select-folder', async () => {
     const result = await openDialog({
       properties: ['openDirectory', 'createDirectory'], title: 'Choose a destination folder'
     });
@@ -80,11 +140,11 @@ export function registerIpcHandlers(mainWindow) {
     selectedDestination = result.filePaths[0];
     return selectedDestination;
   });
-  ipcMain.handle('open-folder', async (_, folder) => {
+  handle('open-folder', async (_, folder) => {
     if (folder === selectedDestination && fs.existsSync(folder)) return shell.openPath(folder);
     return 'Choose a destination folder first';
   });
-  ipcMain.handle('open-source-link', async (_, rawUrl) => {
+  handle('open-source-link', async (_, rawUrl) => {
     try {
       const url = new URL(rawUrl);
       const host = url.hostname.toLowerCase();
@@ -95,28 +155,28 @@ export function registerIpcHandlers(mainWindow) {
       return { success: true };
     } catch { return { success: false, error: 'Could not open this source link' }; }
   });
-  ipcMain.handle('parse-input', async (_, rawInput) => {
-    if (activeParse || activeMetadata || activeMatching || activeQueue) return { success: false, error: 'Wait for the current task to finish or cancel it first' };
-    activeParse = true;
+  handle('parse-input', async (_, rawInput) => {
+    if (busy()) return { success: false, error: 'Wait for the current task to finish or cancel it first' };
+    activeParse = new AbortController();
     try {
-      const result = await parseInput(rawInput);
-      parsedTracks = result.tracks.map((track, index) => ({ ...track, index: index + 1 }));
+      const result = installTracks(await parseInput(rawInput, activeParse.signal));
+      await persist();
       return { success: true, ...result };
     } catch (err) {
       return { success: false, error: err.message };
     } finally {
-      activeParse = false;
+      activeParse = null;
     }
   });
-  ipcMain.handle('fetch-metadata', (_, selectedIndices) => {
-    if (activeParse || activeQueue || activeMetadata) return { success: false, error: 'Another task is already running' };
+  handle('fetch-metadata', (_, selectedIndices) => {
+    if (activeParse || activeQueue || activeMetadata || activeMatching || exportController) return { success: false, error: 'Another task is already running' };
     if (!Array.isArray(selectedIndices) || !selectedIndices.every(Number.isSafeInteger)) return { success: false, error: 'Select valid tracks first' };
     const ids = new Set(selectedIndices);
     if (ids.size !== selectedIndices.length || ids.size > parsedTracks.length) return { success: false, error: 'Track selection is out of date' };
     if (parsedTracks.filter(track => ids.has(track.index)).length !== ids.size) return { success: false, error: 'Track selection is out of date' };
     const tracks = parsedTracks.filter(track => ids.has(track.index) && track.needsMetadata);
     if (!tracks.length) return { success: false, error: 'No selected tracks need details' };
-    const job = { controller: new AbortController(), next: 0, completed: 0, errors: 0, total: tracks.length, finished: false };
+    const job = { id: randomUUID(), controller: new AbortController(), next: 0, completed: 0, errors: 0, total: tracks.length, finished: false };
     activeMetadata = job;
     const worker = async () => {
       while (!job.controller.signal.aborted && job.next < tracks.length) {
@@ -131,7 +191,7 @@ export function registerIpcHandlers(mainWindow) {
           job.errors++;
         }
         job.completed++;
-        send('metadata-progress', { track, completed: job.completed, total: job.total, errors: job.errors });
+        send('metadata-progress', { jobId: job.id, track, completed: job.completed, total: job.total, errors: job.errors });
       }
     };
     const workers = tracks.every(track => track.source === 'soundcloud' && track.soundcloudId) ? 8 : 4;
@@ -139,29 +199,34 @@ export function registerIpcHandlers(mainWindow) {
       if (job.finished) return;
       job.finished = true;
       if (activeMetadata === job) activeMetadata = null;
-      send('metadata-completed', { completed: job.completed, total: job.total, errors: job.errors, cancelled: job.controller.signal.aborted });
+      send('metadata-completed', { jobId: job.id, completed: job.completed, total: job.total, errors: job.errors, cancelled: job.controller.signal.aborted });
     });
-    return { success: true, total: tracks.length };
+    return { success: true, total: tracks.length, jobId: job.id };
   });
-  ipcMain.handle('cancel-metadata', () => {
+  handle('cancel-metadata', () => {
     if (!activeMetadata) return { success: false, error: 'No details lookup is running' };
     const job = activeMetadata;
     job.controller.abort();
     job.finished = true;
     activeMetadata = null;
-    send('metadata-completed', { completed: job.completed, total: job.total, errors: job.errors, cancelled: true });
+    send('metadata-completed', { jobId: job.id, completed: job.completed, total: job.total, errors: job.errors, cancelled: true });
     return { success: true };
   });
-  ipcMain.handle('find-matches', (_, request) => {
-    if (activeParse || activeMetadata || activeMatching || activeQueue) return { success: false, error: 'Another task is already running' };
+  handle('find-matches', (_, request) => {
+    if (busy()) return { success: false, error: 'Another task is already running' };
     const selectedIndices = Array.isArray(request) ? request : request?.indices;
     if (!Array.isArray(selectedIndices) || !selectedIndices.every(Number.isSafeInteger)) return { success: false, error: 'Select valid tracks first' };
+    validSelection(selectedIndices, parsedTracks);
     const ids = new Set(selectedIndices);
     const force = request?.force === true;
     const tracks = parsedTracks.filter(track => ids.has(track.index) && (force || ((!track.directUrl || track.blockedOriginal) && !track.matchUrl)));
     if (!tracks.length) return { success: false, error: 'No selected tracks need matches' };
-    if (force) for (const track of tracks) track.blockedOriginal = true;
-    const job = { controller: new AbortController(), next: 0, completed: 0, errors: 0, total: tracks.length, finished: false };
+    for (const track of tracks) {
+      if (force) track.blockedOriginal = true;
+      if (track.blockedOriginal) track.autoFallbackTried = true;
+      track.trimDecision = null; track.reviewSourcePath = null; track.inspection = null;
+    }
+    const job = { id: randomUUID(), controller: new AbortController(), next: 0, completed: 0, errors: 0, total: tracks.length, finished: false };
     activeMatching = job;
     const worker = async () => {
       while (!job.controller.signal.aborted && job.next < tracks.length) {
@@ -180,7 +245,7 @@ export function registerIpcHandlers(mainWindow) {
           job.errors++;
         }
         job.completed++;
-        send('match-progress', { track, completed: job.completed, total: job.total, errors: job.errors });
+        send('match-progress', { jobId: job.id, track, completed: job.completed, total: job.total, errors: job.errors });
       }
     };
     const requestedConcurrency = Math.max(1, Math.min(12, Number(request?.concurrency) || 4));
@@ -189,31 +254,35 @@ export function registerIpcHandlers(mainWindow) {
       if (job.finished) return;
       job.finished = true;
       if (activeMatching === job) activeMatching = null;
-      send('match-completed', { completed: job.completed, total: job.total, errors: job.errors, cancelled: job.controller.signal.aborted });
+      send('match-completed', { jobId: job.id, completed: job.completed, total: job.total, errors: job.errors, cancelled: job.controller.signal.aborted });
     });
-    return { success: true, total: tracks.length, workers };
+    return { success: true, total: tracks.length, workers, jobId: job.id };
   });
-  ipcMain.handle('cancel-matches', () => {
+  handle('cancel-matches', () => {
     if (!activeMatching) return { success: false, error: 'No match search is running' };
     const job = activeMatching;
     job.controller.abort();
     job.finished = true;
     activeMatching = null;
-    send('match-completed', { completed: job.completed, total: job.total, errors: job.errors, cancelled: true });
+    send('match-completed', { jobId: job.id, completed: job.completed, total: job.total, errors: job.errors, cancelled: true });
     return { success: true };
   });
-  ipcMain.handle('choose-match', (_, index, url) => {
+  handle('choose-match', (_, index, url) => {
+    if (busy()) return {success: false, error: 'Stop the current task first'};
     const track = parsedTracks.find(item => item.index === index);
     if (!track || !track.candidates?.some(candidate => candidate.url === url)) return { success: false, error: 'That match is no longer available' };
     track.matchUrl = url;
     track.matchState = 'chosen';
     track.matchError = null;
+    track.trimDecision = null; track.reviewSourcePath = null; track.inspection = null;
+    persist().catch(() => {});
     return { success: true, track };
   });
-  ipcMain.handle('start-download', async (_, options) => {
+  handle('start-download', async (_, options) => {
     if (activeQueue) return { success: false, error: 'A batch is already running' };
-    if (activeParse || activeMetadata || activeMatching) return { success: false, error: 'Wait for track review to finish' };
+    if (activeParse || activeMetadata || activeMatching || exportController) return { success: false, error: 'Wait for track review to finish' };
     if (!parsedTracks.length) return { success: false, error: 'Analyze a link or tracklist first' };
+    try { validatePreferences(options || {}); } catch (error) { return {success: false, error: error.message}; }
     if (!Array.isArray(options?.selectedIndices) || !options.selectedIndices.length || !options.selectedIndices.every(Number.isSafeInteger)) {
       return { success: false, error: 'Select at least one track' };
     }
@@ -222,19 +291,21 @@ export function registerIpcHandlers(mainWindow) {
     const selectedTracks = parsedTracks.filter(track => selectedIds.has(track.index));
     if (selectedTracks.length !== selectedIds.size) return { success: false, error: 'Track selection is out of date; reload the queue' };
     if (selectedTracks.some(track => track.needsMetadata)) return { success: false, error: 'Fetch details for selected tracks before downloading' };
-    if (selectedTracks.some(track => (!track.directUrl || track.blockedOriginal) && !track.matchUrl)) return { success: false, error: 'Review audio matches for selected tracks before downloading' };
+    if (selectedTracks.some(track => !track.localPath && (!track.directUrl || track.blockedOriginal) && !track.matchUrl)) return { success: false, error: 'Review audio matches for selected tracks before downloading' };
     if (options.destinationDir !== selectedDestination || !selectedDestination || !fs.existsSync(selectedDestination)) {
       return { success: false, error: 'Choose a destination folder' };
     }
     const queue = new DownloadQueue({
       destinationDir: selectedDestination,
+      cacheDir: path.join(app.getPath('userData'), 'audio-cache'),
       concurrency: options.concurrency,
       mode: options.mode,
-      onTrackProgress: track => send('track-progress', track),
-      onTrackCompleted: track => {
+      onTrackProgress: track => { const original = parsedTracks.find(item => item.id === track.id); if (original) Object.assign(original, track); send('track-progress', track); },
+      onTrackCompleted: async track => {
         const original = parsedTracks.find(item => item.index === track.index);
         if (original) Object.assign(original, track);
         send('track-completed', track);
+        await persist();
       },
       onLog: message => send('log', message),
       onAllCompleted: summary => {
@@ -248,9 +319,46 @@ export function registerIpcHandlers(mainWindow) {
     queue.start();
     return { success: true };
   });
-  ipcMain.handle('cancel-download', () => {
+  handle('cancel-download', () => {
     if (!activeQueue) return { success: false, error: 'No active batch' };
     activeQueue.cancel();
     return { success: true };
   });
+  handle('cancel-import', () => { activeParse?.abort(); return {success: true}; });
+  handle('import-local', async (_, folder = false) => {
+    if (busy()) return {success: false, error: 'Stop the current task first'};
+    const result = await openDialog({properties: folder ? ['openDirectory'] : ['openFile', 'multiSelections'], filters: [{name: 'Audio', extensions: ['mp3', 'wav', 'flac', 'aiff', 'aif', 'm4a']}]});
+    if (result.canceled) return {success: false, cancelled: true};
+    activeParse = new AbortController();
+    try { const imported = installTracks(await importLocal(result.filePaths, activeParse.signal)); await persist(); return {success: true, ...imported}; }
+    catch (error) { return {success: false, error: error.message}; }
+    finally { activeParse = null; }
+  });
+  handle('review-audio', async (_, id, decision) => {
+    if (busy()) return {success: false, error: 'Wait for the current task first'};
+    const track = parsedTracks.find(item => item.id === id);
+    if (!track?.inspection || track.status !== 'audio_review') return {success: false, error: 'Audio review is no longer available'};
+    if (!['keep', 'trim'].includes(decision?.action)) throw new Error('Invalid audio decision');
+    if (decision.action === 'trim' && (!Number.isFinite(decision.endSec) || decision.endSec < 0.1 || decision.endSec > track.inspection.durationSec)) throw new Error('Endpoint is outside the recording');
+    track.trimDecision = {action: decision.action, endSec: decision.action === 'trim' ? decision.endSec : null, sourceSha256: track.inspection.sourceSha256, approvedAt: new Date().toISOString(), analysisVersion: track.inspection.version};
+    track.status = 'pending'; await persist(); return {success: true, track};
+  });
+  handle('export-crate', async (_, indices) => {
+    if (busy()) return {success: false, error: 'Wait for the current task first'};
+    if (!selectedDestination) return {success: false, error: 'Choose a destination'};
+    exportController = new AbortController();
+    try { return {success: true, ...await exportCrate(validSelection(indices, parsedTracks), selectedDestination, sessionContext.collection?.title, exportController.signal)}; }
+    catch (error) { return {success: false, error: error.message}; }
+    finally { exportController = null; }
+  });
+  handle('cancel-export', () => {exportController?.abort(); return {success: true};});
+  handle('export-diagnostics', async () => {
+    const result = await dialog.showSaveDialog(owner(), {defaultPath: 'DeckPrep-diagnostics.json', filters: [{name: 'JSON', extensions: ['json']}]});
+    if (result.canceled) return {success: false, cancelled: true};
+    const data = {version: app.getVersion(), platform: process.platform, arch: process.arch, electron: process.versions.electron, engines: await engineVersions(),
+      tracks: parsedTracks.map(track => ({id: track.id, source: track.source, status: track.status, errorCode: track.errorCode || null, hasInspection: !!track.inspection, needsReview: track.status === 'audio_review'}))};
+    await fs.promises.writeFile(result.filePath, JSON.stringify(data, null, 2)); return {success: true};
+  });
+  handle('open-releases', async () => { await shell.openExternal('https://github.com/byohros6/DeckPrep/releases'); return {success: true}; });
+
 }

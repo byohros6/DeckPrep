@@ -17,6 +17,13 @@ test('Hebrew tokens distinguish matching from unrelated titles', () => {
   assert.equal(rankCandidates(requested, [{url: 'https://youtube.com/watch?v=two', artist: requested.artist, title: 'שיר אחר', durationSec: 200}]).chosen, null);
 });
 
+test('similar remix names require every requested version word and failed alternatives are excluded', () => {
+  const requested = {...track, mix: 'The Midnight Project Remix'};
+  const wrong = {url: 'https://youtube.com/watch?v=wrong', artist: track.artist, title: track.title + ' (The Midnight City Remix)', durationSec: track.durationSec};
+  assert.equal(rankCandidates(requested, [wrong]).chosen, null);
+  assert.equal(rankCandidates({...track, blockedUrls: [wrong.url]}, [wrong]).candidates.length, 0);
+});
+
 test('a strong title, artist, and duration match can be selected automatically', () => {
   const result = rankCandidates(track, [
     { url: 'https://soundcloud.com/example/track', title: '(It Goes Like) Nanana', artist: 'Peggy Gou', durationSec: 232 },

@@ -1,35 +1,31 @@
 import NodeID3 from 'node-id3';
-import { cleanTitle, cleanArtist } from './metadata.js';
+import { cleanArtist, versionedTitle } from './metadata.js';
 import { resolveBinary } from './binaryManager.js';
 import { spawn } from 'child_process';
+import { readLocalMetadata } from './localImport.js';
 
 /**
  * Ensures artwork buffer is formatted as baseline JPEG for strict Pioneer CDJ / Rekordbox hardware compatibility
  */
-async function ensureJpegBuffer(buffer) {
+async function ensureJpegBuffer(buffer, signal) {
   if (!buffer || buffer.length < 4) return null;
-  // If already standard JPEG (FF D8 FF)
-  if (buffer[0] === 0xFF && buffer[1] === 0xD8) {
-    return { buffer, mime: 'image/jpeg' };
-  }
-
   // Convert WebP / PNG / AVIF to JPEG via FFmpeg
   try {
     const ffmpegPath = await resolveBinary('ffmpeg');
     if (!ffmpegPath) {
-      const isPng = buffer[0] === 0x89 && buffer[1] === 0x50;
-      return { buffer, mime: isPng ? 'image/png' : 'image/jpeg' };
+      return null;
     }
 
     return await new Promise((resolve) => {
       const proc = spawn(ffmpegPath, [
         '-y',
         '-i', 'pipe:0',
-        '-vframes', '1',
+        '-vframes', '1', '-vf', 'scale=600:600:force_original_aspect_ratio=decrease',
         '-f', 'image2',
         '-c:v', 'mjpeg',
         'pipe:1'
-      ]);
+      ], { signal, windowsHide: true, timeout: 10000 });
+      proc.stderr.resume();
 
       const chunks = [];
       proc.stdout.on('data', chunk => chunks.push(chunk));
@@ -37,13 +33,11 @@ async function ensureJpegBuffer(buffer) {
         if (code === 0 && chunks.length > 0) {
           resolve({ buffer: Buffer.concat(chunks), mime: 'image/jpeg' });
         } else {
-          const isPng = buffer[0] === 0x89 && buffer[1] === 0x50;
-          resolve({ buffer, mime: isPng ? 'image/png' : 'image/jpeg' });
+          resolve(null);
         }
       });
       proc.on('error', () => {
-        const isPng = buffer[0] === 0x89 && buffer[1] === 0x50;
-        resolve({ buffer, mime: isPng ? 'image/png' : 'image/jpeg' });
+        resolve(null);
       });
 
       proc.stdin.on('error', () => {});
@@ -51,18 +45,18 @@ async function ensureJpegBuffer(buffer) {
       proc.stdin.end();
     });
   } catch {
-    return { buffer, mime: 'image/jpeg' };
+    return null;
   }
 }
 
 /**
  * Embed ID3v2.3 tags into MP3 files tailored for Pioneer Rekordbox / CDJ compatibility
  */
-export async function tagMp3File(filePath, metadata) {
-  const title = cleanTitle(metadata.title || '');
+export async function tagMp3File(filePath, metadata, {signal} = {}) {
+  const title = versionedTitle(metadata);
   const artist = cleanArtist(metadata.artist || '');
   const album = metadata.album || '';
-  const genre = metadata.genre || 'Electronic / Dance';
+  const genre = metadata.genre || '';
   const year = metadata.year ? String(metadata.year) : '';
 
   const tags = {
@@ -81,21 +75,34 @@ export async function tagMp3File(filePath, metadata) {
 
   // Use existing embedded art or artwork supplied with source metadata.
   let rawImageBuffer = metadata.imageBuffer;
+  if (!rawImageBuffer && metadata.localPath) {
+    try {
+      const original = await readLocalMetadata(metadata.localPath, signal, false);
+      const picture = original.common.picture?.[0]?.data;
+      if (picture && picture.length < 8 * 1024 * 1024) rawImageBuffer = Buffer.from(picture);
+    } catch { metadata.artworkWarning = 'Original artwork could not be read'; }
+  }
   if (!rawImageBuffer && metadata.artworkUrl) {
     try {
       const artworkUrl = new URL(metadata.artworkUrl);
       if (artworkUrl.protocol === 'https:') {
-        const response = await fetch(artworkUrl, { signal: AbortSignal.timeout(10000) });
+        const response = await fetch(artworkUrl, { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000) });
         if (response.ok && Number(response.headers.get('content-length') || 0) < 8 * 1024 * 1024) {
-          const data = Buffer.from(await response.arrayBuffer());
-          if (data.length < 8 * 1024 * 1024) rawImageBuffer = data;
+          const chunks = []; let length = 0;
+          for await (const chunk of response.body) {
+            length += chunk.length;
+            if (length >= 8 * 1024 * 1024) throw new Error('Artwork is too large');
+            chunks.push(chunk);
+          }
+          rawImageBuffer = Buffer.concat(chunks);
         }
       }
-    } catch {}
+    } catch { metadata.artworkWarning = 'Artwork could not be loaded and was omitted'; }
   }
 
   if (rawImageBuffer) {
-    const jpegResult = await ensureJpegBuffer(rawImageBuffer);
+    const jpegResult = await ensureJpegBuffer(rawImageBuffer, signal);
+    if (!jpegResult) metadata.artworkWarning = 'Artwork could not be normalized and was omitted';
     if (jpegResult) {
       tags.image = {
         mime: jpegResult.mime,
@@ -109,6 +116,7 @@ export async function tagMp3File(filePath, metadata) {
     }
   }
 
+  signal?.throwIfAborted();
   // Write ID3v2.3 tags synchronously / promise-wrapped
   return new Promise((resolve, reject) => {
     NodeID3.write(tags, filePath, (err) => {

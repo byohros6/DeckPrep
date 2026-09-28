@@ -38,3 +38,16 @@ export async function checkBinaries() {
   const ytDlp = await resolveBinary('yt-dlp');
   return { ffmpeg: { found: !!ffmpeg, path: ffmpeg }, ytDlp: { found: !!ytDlp, path: ytDlp } };
 }
+
+export async function engineVersions() {
+  const versions = {};
+  for (const name of ['ffmpeg', 'yt-dlp']) {
+    const binary = await resolveBinary(name);
+    try {
+      if (!binary) throw new Error('Missing');
+      const {stdout} = await execFileAsync(binary, [name === 'ffmpeg' ? '-version' : '--version'], {timeout: 10000, windowsHide: true});
+      versions[name] = name === 'ffmpeg' ? stdout.match(/^ffmpeg version\s+(\S+)/)?.[1] || 'unknown' : stdout.trim().slice(0, 80);
+    } catch { versions[name] = 'unavailable'; }
+  }
+  return versions;
+}

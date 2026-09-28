@@ -64,11 +64,12 @@ export async function transcodeToMp3(inputPath, outputPath, options = {}) {
     '-b:a', bitrate,
     '-ar', String(sampleRate),
     '-ac', '2',
+    ...(Number.isFinite(options.endSec) && options.endSec > 0 ? ['-t', String(options.endSec)] : []),
     outputPath
   ];
 
   try {
-    await execFileAsync(ffmpegPath, args, { signal: options.signal });
+    await execFileAsync(ffmpegPath, args, { signal: options.signal, timeout: 300000, windowsHide: true });
     return outputPath;
   } catch (err) {
     if (fs.existsSync(outputPath)) {

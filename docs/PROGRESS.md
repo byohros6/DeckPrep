@@ -5,7 +5,7 @@
 - Baseline: 1.4.0-beta.8 / 4c1d3cc, existing branch codex/deckprep-1-4-upgrade ahead of main. New implementation branch: codex/deckprep-reliability, preserving that work.
 - Untracked `.dajent-analysis/` is unrelated extracted third-party research; do not stage it.
 - Git fetch/push works with sandbox escalation. Draft PR: https://github.com/byohros6/DeckPrep/pull/2 (base is the existing beta PR #1 branch). No merge, tag or release published.
-- Baseline tests passed in planning: 32. Current implementation suite: 43 passed; actual desktop review/restore/trim/crate flow passed at beta.10 with maximize assertion.
+- Baseline tests passed in planning: 32. Current implementation suite: 44 passed; actual desktop review/restore/trim/crate flow and match-conflict IPC passed at beta.10 with maximize assertion.
 
 ## Milestone status
 - A reliability: core implementation and regression checks in place; further hardening remains below.
@@ -67,4 +67,9 @@
 - Re-run passed: 43/43 engine tests and actual Electron desktop review/restore/trim/M3U8 workflow, including the maximize assertion. Prototype browser check first failed because Studio hid the source card and offered no screenshot entry; added a Studio screenshot shortcut. Visual QA also found default browser styling made step buttons white and a known wrong-version candidate selectable; both corrected before recheck.
 - The prototype passed a local Chrome browser interaction check: Guided/Studio switch, full candidate title, blocked wrong version, required match decisions, screenshot concept, optional playlist selection, narrow layout without horizontal overflow, and no page errors. Sample-data screenshots are local `dist/qa-redesign-concept.png` and `dist/qa-redesign-narrow.png` (ignored build evidence).
 - Beta.10 E2E screenshot names and Windows CI upload pattern were aligned after the first beta.10 push. Actual desktop E2E passed again (100/500/1000 load+render 87/176/293ms; search 18/33/50ms, single runs). Hosted CI for this follow-up is still pending.
+
+### Checkpoint 7 — readable and safe match decisions
+- Current beta UI now widens the detail panel, wraps full candidate titles and visible reasons, labels incompatible recordings "Wrong version", and keeps text readable. The manual choose IPC recomputes version compatibility, so the disabled UI is not the only guard. Restore drops a known conflicting saved choice; start-download also refuses one.
+- Tests: 44/44 engine tests passed, including a named-remix compatibility case. Actual Electron E2E passed local import/review/export plus a crafted saved conflicting recording: its complete title stayed visible, its choice was disabled, the main IPC rejected a direct choose request, and restore explained the conflict. Screenshot: ignored local `dist/qa-match-review-beta10.png`.
+- This is a narrow usability/safety fix in the old interface. The Guided/Studio prototype and automatic speed/OCR remain separate planned work. Hosted Windows CI on this checkpoint still to verify after push.
 - Next: commit/push beta.10 design checkpoint and inspect hosted CI. Continue original reliability hardening and performance profiling before full UI implementation.

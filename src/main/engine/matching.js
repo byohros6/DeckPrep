@@ -62,6 +62,10 @@ export function scoreCandidate(track, candidate) {
   return candidateSignals(track, candidate).score;
 }
 
+export function candidateVersionCompatible(track, candidate) {
+  return candidateSignals(track, candidate).versionCompatible;
+}
+
 export function rankCandidates(track, candidates) {
   const unique = new Map();
   for (const candidate of candidates) {

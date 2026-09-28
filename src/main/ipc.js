@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import { checkBinaries, engineVersions } from './engine/binaryManager.js';
 import { parseInput, fetchTrackDetails } from './engine/sources.js';
 import { DownloadQueue, verifyMp3File } from './engine/downloadQueue.js';
-import { findAudioMatches, rankCandidates } from './engine/matching.js';
+import { candidateVersionCompatible, findAudioMatches, rankCandidates } from './engine/matching.js';
 import { readSession, saveSession, clearSession, flushSession } from './sessionStore.js';
 
 let activeQueue = null;
@@ -110,6 +110,12 @@ export function registerIpcHandlers(mainWindow) {
         catch { restored.status = 'pending'; restored.outputPath = null; }
       }
       if (['resolving', 'searching', 'downloading', 'transcoding', 'tagging', 'inspecting'].includes(restored.status)) restored.status = 'pending';
+      const savedChoice = restored.candidates?.find(candidate => candidate.url === restored.matchUrl);
+      if (savedChoice && !candidateVersionCompatible(restored, savedChoice)) {
+        restored.matchUrl = null;
+        restored.matchState = 'review';
+        restored.matchError = 'The saved recording conflicts with the requested version; choose a compatible result.';
+      }
       if (!restored.directUrl && !restored.matchUrl && restored.candidates?.length) {
         const ranked = rankCandidates(restored, restored.candidates);
         restored.candidates = ranked.candidates;
@@ -270,7 +276,9 @@ export function registerIpcHandlers(mainWindow) {
   handle('choose-match', (_, index, url) => {
     if (busy()) return {success: false, error: 'Stop the current task first'};
     const track = parsedTracks.find(item => item.index === index);
-    if (!track || !track.candidates?.some(candidate => candidate.url === url)) return { success: false, error: 'That match is no longer available' };
+    const candidate = track?.candidates?.find(item => item.url === url);
+    if (!candidate) return { success: false, error: 'That match is no longer available' };
+    if (!candidateVersionCompatible(track, candidate)) return { success: false, error: 'This recording conflicts with the requested version; choose another result' };
     track.matchUrl = url;
     track.matchState = 'chosen';
     track.matchError = null;
@@ -291,6 +299,7 @@ export function registerIpcHandlers(mainWindow) {
     const selectedTracks = parsedTracks.filter(track => selectedIds.has(track.index));
     if (selectedTracks.length !== selectedIds.size) return { success: false, error: 'Track selection is out of date; reload the queue' };
     if (selectedTracks.some(track => track.needsMetadata)) return { success: false, error: 'Fetch details for selected tracks before downloading' };
+    if (selectedTracks.some(track => track.matchUrl && track.candidates?.some(candidate => candidate.url === track.matchUrl && !candidateVersionCompatible(track, candidate)))) return { success: false, error: 'A selected recording conflicts with the requested version; review its match first' };
     if (selectedTracks.some(track => !track.localPath && (!track.directUrl || track.blockedOriginal) && !track.matchUrl)) return { success: false, error: 'Review audio matches for selected tracks before downloading' };
     if (options.destinationDir !== selectedDestination || !selectedDestination || !fs.existsSync(selectedDestination)) {
       return { success: false, error: 'Choose a destination folder' };

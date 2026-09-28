@@ -6,6 +6,7 @@ import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { resolveBinary } from '../src/main/engine/binaryManager.js';
+import { rankCandidates } from '../src/main/engine/matching.js';
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'deckprep-e2e-'));
 const source = path.join(root, 'עומר - Test song.wav');
@@ -80,8 +81,34 @@ try {
     scale.push({count, loadAndRenderMs: renderMs, searchMs: Date.now() - searchStart});
     await page.locator('#queueSearch').fill('');
   }
+  await application.close();
+  application = null;
+  const wrongUrl = 'https://www.youtube.com/watch?v=wrong-version';
+  const requested = {id: 'test-version-conflict', artist: 'Kerri Chandler, Troy Denari', title: 'The Way It Goes', mix: 'Chris Stassy Remix', durationSec: 488, source: 'spotify', selected: true, status: 'pending'};
+  const wrong = {url: wrongUrl, title: 'Kerri Chandler feat. Troy Denari - The Way It Goes (Original Mix, Long Club Version)', artist: 'Kerri Chandler', durationSec: 488, provider: 'YouTube'};
+  const candidates = rankCandidates(requested, [wrong]).candidates;
+  assert.equal(candidates[0].evidence.versionCompatible, false);
+  await fs.writeFile(path.join(root, 'state', 'session.json'), JSON.stringify({version: 2, source: 'spotify', collection: {title: 'Version review'}, tracks: [{...requested, candidates, matchUrl: wrongUrl, matchState: 'chosen'}]}));
+  application = await electron.launch({...(executable ? {executablePath: executable} : {}), args: [...(executable ? [] : ['.']), '--test-user-data=' + path.join(root, 'state')], timeout: 30000});
+  page = await application.firstWindow();
+  page.on('pageerror', error => errors.push(error.message));
+  await page.locator('#resumeSessionBtn').click();
+  await page.locator('tr[data-index]').click();
+  const conflictingChoice = page.locator('.candidate').first();
+  assert.match(await conflictingChoice.innerText(), /Original Mix, Long Club Version/);
+  assert.equal(await conflictingChoice.isDisabled(), true);
+  assert.match(await conflictingChoice.innerText(), /Wrong version/);
+  assert.match(await conflictingChoice.innerText(), /conflicts with the requested Chris Stassy Remix/);
+  assert.equal(await conflictingChoice.evaluate(element => getComputedStyle(element).opacity), '1');
+  assert.equal(await conflictingChoice.locator('strong').evaluate(element => getComputedStyle(element).whiteSpace), 'normal');
+  assert.match(await page.locator('#detailHelp').innerText(), /conflicts with the requested version/);
+  const manualChoice = await page.evaluate(url => window.djAPI.chooseMatch(1, url), wrongUrl);
+  assert.equal(manualChoice.success, false);
+  assert.match(manualChoice.error, /conflicts with the requested version/);
+  await page.screenshot({path: 'dist/qa-match-review-beta10.png'});
+  assert.deepEqual(errors, []);
   console.log('Synthetic desktop queue timings:', JSON.stringify(scale));
-  console.log('PASS Electron: local import -> inspection -> working audio preview -> close/restore review -> approved trim -> verified output -> M3U8, original preserved, sandbox enabled, no renderer errors');
+  console.log('PASS Electron: local import -> inspection -> preview -> restore -> approved trim -> verified M3U8, originals preserved; incompatible saved match blocked in real IPC and full title visible; sandbox enabled, no renderer errors');
 } finally {
   await application?.close();
   await fs.rm(root, {recursive: true, force: true});

@@ -379,15 +379,21 @@ function renderDetail(track) {
     const button = document.createElement('button');
     button.className = `candidate ${candidate.url === track.matchUrl ? 'chosen' : ''}`;
     button.type = 'button';
-    button.setAttribute('aria-label', `Use ${candidate.title} from ${candidate.provider}`);
     const title = document.createElement('strong');
     title.textContent = candidate.title;
     const details = document.createElement('span');
-    const quality = candidate.score >= 0.8 ? 'Likely' : candidate.score >= 0.55 ? 'Possible' : 'Weak';
+    const incompatible = candidate.evidence?.versionCompatible === false;
+    const quality = incompatible ? 'Wrong version' : candidate.score >= 0.8 ? 'Likely' : candidate.score >= 0.55 ? 'Possible' : 'Weak';
     details.textContent = `${candidate.provider} · ${candidate.artist || 'Unknown artist'} · ${formatDuration(candidate.durationSec)} · ${quality} match`;
-    button.title = candidate.reason || '';
-    button.disabled = isDownloading || isFindingMatches || isFetchingDetails || isExporting;
-    button.append(title, details);
+    const reason = document.createElement('span');
+    reason.className = `candidate-reason ${candidate.evidence?.versionCompatible === false ? 'conflict' : ''}`;
+    reason.textContent = incompatible
+      ? `This result conflicts with the requested ${track.mix || 'recording version'}. Open the source or search again.`
+      : candidate.reason || 'Compare title, artist, version and duration with the requested track.';
+    button.classList.toggle('conflict', incompatible);
+    button.disabled = incompatible || isDownloading || isFindingMatches || isFetchingDetails || isExporting;
+    button.setAttribute('aria-label', `${incompatible ? 'Version conflict: ' : 'Use '}${candidate.title} from ${candidate.provider}. ${reason.textContent}`);
+    button.append(title, details, reason);
     button.addEventListener('click', async () => {
       const result = await window.djAPI.chooseMatch(track.index, candidate.url);
       if (!result.success) { appendLog(result.error, 'err-msg'); return; }

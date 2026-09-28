@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rankCandidates } from '../src/main/engine/matching.js';
+import { candidateVersionCompatible, rankCandidates } from '../src/main/engine/matching.js';
 
 const track = { artist: 'Peggy Gou', title: '(It Goes Like) Nanana', mix: '', durationSec: 231 };
 
@@ -9,6 +9,12 @@ test('explicit variants never auto-match a plain recording at identical duration
     const result = rankCandidates(track, [{url: 'https://youtube.com/watch?v=variant', artist: track.artist, title: `${track.title} (${suffix})`, durationSec: track.durationSec}]);
     assert.equal(result.chosen, null, suffix);
   }
+});
+
+test('a named remix conflict is incompatible even for a manual choice', () => {
+  const requested = {artist: 'Kerri Chandler', title: 'The Way It Goes', mix: 'Chris Stassy Remix', durationSec: 488};
+  assert.equal(candidateVersionCompatible(requested, {title: 'The Way It Goes (Original Mix)', durationSec: 488}), false);
+  assert.equal(candidateVersionCompatible(requested, {title: 'The Way It Goes (Chris Stassy Remix)', durationSec: 488}), true);
 });
 
 test('Hebrew tokens distinguish matching from unrelated titles', () => {

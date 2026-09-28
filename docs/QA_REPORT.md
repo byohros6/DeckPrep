@@ -16,3 +16,9 @@ Packaged desktop: dist/win-unpacked/DeckPrep.exe passed the same workflow. Packa
 Actual Rekordbox, 20 sessions/two weeks, independent computers, accessibility assistive technology, representative 200-case accuracy, signing and binary redistribution gates remain open.
 
 Hosted Windows CI passed for implementation commit 4b3cdc0, including all source/packaged tests and portable export: https://github.com/byohros6/DeckPrep/actions/runs/36473829849 . A hosted test runner does not count as independent-user beta acceptance.
+
+## Beta 10 design checkpoint (source build)
+
+- 43/43 engine tests passed. Actual Electron desktop flow passed again, including an assertion that normal startup reaches maximized state; 100/500/1000 synthetic row load+render was 87/183/304ms and search 20/35/36ms on the same development machine. These are single runs.
+- Standalone concept opened in installed Chrome at 1440px and 600px. Verified visible full candidate title, disabled known wrong-version choice, required match decisions before preparing, Guided/Studio toggle, screenshot concept, optional playlist explanation, no narrow horizontal overflow, and zero page errors. Screenshots: `dist/qa-redesign-concept.png`, `dist/qa-redesign-narrow.png` (ignored local evidence). This is not production UI or an OCR test.
+- First maximize assertion read before the window finished showing and failed; it now waits for the event result. First concept check exposed a Studio mode without screenshot entry; corrected before the final passing check.

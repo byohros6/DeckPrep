@@ -5,7 +5,7 @@
 - Baseline: 1.4.0-beta.8 / 4c1d3cc, existing branch codex/deckprep-1-4-upgrade ahead of main. New implementation branch: codex/deckprep-reliability, preserving that work.
 - Untracked `.dajent-analysis/` is unrelated extracted third-party research; do not stage it.
 - Git fetch/push works with sandbox escalation. Draft PR: https://github.com/byohros6/DeckPrep/pull/2 (base is the existing beta PR #1 branch). No merge, tag or release published.
-- Baseline tests passed in planning: 32. Current implementation suite: 43 passed; actual desktop review/restore/trim/crate flow passed.
+- Baseline tests passed in planning: 32. Current implementation suite: 43 passed; actual desktop review/restore/trim/crate flow passed at beta.10 with maximize assertion.
 
 ## Milestone status
 - A reliability: core implementation and regression checks in place; further hardening remains below.
@@ -15,10 +15,10 @@
 - E commercial validation: deferred until repeat-use evidence and license/provider review.
 
 ## Next steps
-1. Check Windows CI for the latest commit on draft PR #2; local packaged checks passed. Do not merge or publish stable.
-2. Address restore-validation cancellation and prevent overlapping restore/import/export operations; add actual IPC regression coverage before proceeding to orphaned review-cache maintenance.
-3. Further hardening: restore-validation cancellation, orphaned review-cache maintenance, comprehensive fault injection/disk/network tests, further renderer module extraction, and 200 representative labeled matches.
-4. Carry out external beta/accessibility/Rekordbox/signing/redistribution gates in TESTING.md before calling any stable release ready.
+1. Check Windows CI for the beta.10 commit on draft PR #2. Do not merge or publish stable.
+2. Address restore-validation cancellation and prevent overlapping restore/import/export operations; add actual IPC regression coverage before orphaned review-cache maintenance.
+3. Validate UX_REDESIGN.md with user/DJ feedback, then implement full-title matching UI, plain-language workflow, local OCR, and measured automatic speed in dependency order. The prototype is not production UI.
+4. Finish fault injection, renderer separation, 200 labeled matches, and external beta/accessibility/Rekordbox/signing/redistribution gates in TESTING.md.
 
 ## External acceptance evidence (must not fabricate)
 - Three independent Windows machines: not run.
@@ -59,3 +59,11 @@
 - Windows CI was in progress when this checkpoint was recorded; not claimed passed. Next: inspect CI result, then restore cancellation/operation exclusion with real IPC tests.
 - Audio inspection currently downsamples to 8kHz; high-frequency-only material and threshold edge cases need broader generated fixtures before treating inspection as comprehensive.
 - Windows CI subsequently PASSED for implementation commit 4b3cdc0: https://github.com/byohros6/DeckPrep/actions/runs/36473829849 . All steps passed, including source/packaged desktop, portable generated-audio export and artifact upload. Documentation-only follow-up runs were still in progress at last observation; this evidence is tied to 4b3cdc0.
+
+### Checkpoint 6 — usability redesign started
+- User feedback and screenshot observations added in UX_REDESIGN.md without dropping the master reliability/release scope. A standalone, sample-data interactive prototype shows Guided and Studio layouts, full-title match comparison, screenshot-correction concept and plain-language export options. OCR and this new UI are not yet wired into DeckPrep.
+- Source change: normal window startup now maximizes before display. Package and lock versions updated together to 1.4.0-beta.10; no tag or release.
+- First new desktop assertion failed because it read `isMaximized()` before Electron emitted `ready-to-show`; the test now waits up to four seconds for the window state. Re-run pending. This is a test timing failure; do not claim the new build passed until it does.
+- Re-run passed: 43/43 engine tests and actual Electron desktop review/restore/trim/M3U8 workflow, including the maximize assertion. Prototype browser check first failed because Studio hid the source card and offered no screenshot entry; added a Studio screenshot shortcut. Visual QA also found default browser styling made step buttons white and a known wrong-version candidate selectable; both corrected before recheck.
+- The prototype passed a local Chrome browser interaction check: Guided/Studio switch, full candidate title, blocked wrong version, required match decisions, screenshot concept, optional playlist selection, narrow layout without horizontal overflow, and no page errors. Sample-data screenshots are local `dist/qa-redesign-concept.png` and `dist/qa-redesign-narrow.png` (ignored build evidence).
+- Next: commit/push beta.10 design checkpoint and inspect hosted CI. Continue original reliability hardening and performance profiling before full UI implementation.

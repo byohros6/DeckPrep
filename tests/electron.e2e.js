@@ -42,7 +42,7 @@ try {
   await page.locator('tr[data-index]').click();
   await page.waitForFunction(() => document.querySelector('audio')?.duration > 17);
   await fs.mkdir('dist', {recursive: true});
-  await page.screenshot({path: 'dist/qa-audio-review-beta9.png'});
+  await page.screenshot({path: 'dist/qa-audio-review-beta10.png'});
   await application.close();
   application = await electron.launch({...(executable ? {executablePath: executable} : {}), args: [...(executable ? [] : ['.']), '--test-user-data=' + path.join(root, 'state')], timeout: 30000});
   page = await application.firstWindow();
@@ -64,7 +64,7 @@ try {
   assert.ok(Math.abs(manifest.verification.durationSec - 5) < 0.1);
   assert.equal(manifest.trimDecision.action, 'trim');
   assert.deepEqual(await fs.readFile(source), original);
-  await page.screenshot({path: 'dist/qa-crate-export-beta9.png'});
+  await page.screenshot({path: 'dist/qa-crate-export-beta10.png'});
   assert.deepEqual(errors, []);
   const security = await application.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences());
   assert.equal(security.sandbox, true); assert.equal(security.contextIsolation, true); assert.equal(security.nodeIntegration, false);

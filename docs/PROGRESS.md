@@ -4,19 +4,19 @@
 - Approved master scope saved in MASTER_PLAN.md. All scope remains tracked; never equate a passing unit suite with release acceptance.
 - Baseline: 1.4.0-beta.8 / 4c1d3cc, existing branch codex/deckprep-1-4-upgrade ahead of main. New implementation branch: codex/deckprep-reliability, preserving that work.
 - Untracked `.dajent-analysis/` is unrelated extracted third-party research; do not stage it.
-- Git fetch works with sandbox escalation. GitHub CLI is not on PATH; PR integration to be established without printing credentials.
+- Git fetch/push works with sandbox escalation. Draft PR: https://github.com/byohros6/DeckPrep/pull/2 (base is the existing beta PR #1 branch). No merge, tag or release published.
 - Baseline tests passed in planning: 32. Current implementation suite: 43 passed; actual desktop review/restore/trim/crate flow passed.
 
 ## Milestone status
 - A reliability: core implementation and regression checks in place; further hardening remains below.
 - B audio review/UI: generated-audio flow implemented and tested; actual assistive-technology/high-DPI acceptance pending.
 - C local audio/Rekordbox playlist: implemented and tested structurally; actual Rekordbox acceptance pending.
-- D release tooling/docs: CI/diagnostics/notices/docs added; final packaged test and GitHub checkpoint in progress. External user/machine/Rekordbox gates NOT passed.
+- D release tooling/docs: CI/diagnostics/notices/docs added; packaged desktop and portable export passed locally, draft PR opened. External user/machine/Rekordbox gates NOT passed.
 - E commercial validation: deferred until repeat-use evidence and license/provider review.
 
 ## Next steps
-1. Finish latest portable build; actual packaged desktop E2E passed; portable --check-engines check and checksum still to record.
-2. Commit/push beta.9 checkpoint and create draft PR based on codex/deckprep-1-4-upgrade (existing PR #1), without merging or publishing stable.
+1. Check Windows CI for the latest commit on draft PR #2; local packaged checks passed. Do not merge or publish stable.
+2. Address restore-validation cancellation and prevent overlapping restore/import/export operations; add actual IPC regression coverage before proceeding to orphaned review-cache maintenance.
 3. Further hardening: restore-validation cancellation, orphaned review-cache maintenance, comprehensive fault injection/disk/network tests, further renderer module extraction, and 200 representative labeled matches.
 4. Carry out external beta/accessibility/Rekordbox/signing/redistribution gates in TESTING.md before calling any stable release ready.
 
@@ -51,3 +51,10 @@
 - Real dist/win-unpacked/DeckPrep.exe passed the same review/restore/trim/M3U8 workflow. Packaged 100/500/1000 row load+render 99/178/301ms; search 16/33/51ms.
 - Authenticode status is NotSigned. Builder's 'signing with signtool' log must NOT be presented as a signed release.
 - Portable compression still running; final portable executable check/checksum pending.
+
+### Checkpoint 5 — portable and GitHub checkpoint
+- Final beta.9 portable build completed. Its --check-engines generated-audio export returned success=true and export=true. Authenticode remains NotSigned.
+- SHA-256: 404CE3F52979C4D3D0272C3139CA46EEEDBBEF21F05B1415BC10E03A8F2C8DA3 (local DeckPrep-Portable-1.4.0-beta.9.exe).
+- Commits ea5534f, 518f4fe and 4b3cdc0 pushed to codex/deckprep-reliability. Draft PR #2 opened and attached; dependent on PR #1, not merged.
+- Windows CI was in progress when this checkpoint was recorded; not claimed passed. Next: inspect CI result, then restore cancellation/operation exclusion with real IPC tests.
+- Audio inspection currently downsamples to 8kHz; high-frequency-only material and threshold edge cases need broader generated fixtures before treating inspection as comprehensive.

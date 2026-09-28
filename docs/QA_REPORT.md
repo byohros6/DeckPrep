@@ -11,6 +11,6 @@ Environment: Windows 10.0.26200, x64, Intel Core i7-12700H, Node 24.12.0, Electr
 
 Failed attempts: non-escalated Electron test hit a Playwright transport assertion inside the shell sandbox. The same test with desktop-process access passed. The first runtime launch needed the pinned Electron binary downloaded; setup:desktop is now explicit in development/CI. Initial packaging startup was slow; do not mistake missing console output for a successful build.
 
-Packaged desktop: dist/win-unpacked/DeckPrep.exe passed the same workflow. Packaged load+render times: 99/178/301ms; search 16/33/51ms for 100/500/1000 tracks. Authenticode status: NotSigned. Final portable executable check/checksum remain to record in PROGRESS.
+Packaged desktop: dist/win-unpacked/DeckPrep.exe passed the same workflow. Packaged load+render times: 99/178/301ms; search 16/33/51ms for 100/500/1000 tracks. Final portable executable --check-engines returned success=true and export=true. Authenticode status: NotSigned. SHA-256 for local DeckPrep-Portable-1.4.0-beta.9.exe: 404CE3F52979C4D3D0272C3139CA46EEEDBBEF21F05B1415BC10E03A8F2C8DA3. CI builds may have different hashes; use their associated checksum artifact.
 
 Actual Rekordbox, 20 sessions/two weeks, independent computers, accessibility assistive technology, representative 200-case accuracy, signing and binary redistribution gates remain open.

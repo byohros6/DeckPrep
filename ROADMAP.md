@@ -1,6 +1,8 @@
 # DeckPrep roadmap
 
-This is the running feature log. The current review build is **1.4.0-beta.8**; public links and a reviewable queue are the priority.
+The complete approved scope is in [MASTER_PLAN](docs/MASTER_PLAN.md). Current implementation evidence and open gates are in [PROGRESS](docs/PROGRESS.md); historical checked items below are not new-release acceptance.
+
+This is the running feature log. The current review build is **1.4.0-beta.9**; public links and a reviewable queue are the priority.
 
 ## In the 1.4 upgrade
 

@@ -1,8 +1,8 @@
 # DeckPrep
 
-DeckPrep is a Windows desktop workspace for preparing DJ crates from public music links and pasted tracklists. Load a playlist, review the tracks and audio matches, choose what to export, and follow each file through to a tagged MP3. The queue can be restored after an interrupted session.
+DeckPrep is a Windows desktop workspace for preparing DJ crates from public music links, pasted tracklists, and owned audio files. Load a playlist, review the tracks and audio matches, choose what to export, and follow each file through to a tagged MP3. The queue can be restored after an interrupted session.
 
-**Current version:** 1.4.0-beta.8 · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md)
+**Current version:** 1.4.0-beta.9 · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Master plan](docs/MASTER_PLAN.md) · [Progress](docs/PROGRESS.md)
 
 ![Playlist review in DeckPrep](docs/images/playlist-review.png)
 
@@ -16,6 +16,16 @@ DeckPrep is a Windows desktop workspace for preparing DJ crates from public musi
 5. If you close the app before finishing, it asks whether to restore or discard the saved queue when reopened. Restoring does not start downloads.
 
 ![Choosing an uncertain match](docs/images/match-review.png)
+
+## Audio review and local crates
+
+Use **Add audio files** or **Add folder** for MP3, WAV, FLAC, AIFF, or M4A. Embedded tags are read on import; filenames are used when tags are missing. The actual codec and full audio are checked during preparation. Original files stay untouched. Compatible local MP3s are copied without re-encoding unless you approve a trim.
+
+When a long quiet tail is detected, the track shows **Review ending**. Open its details, listen with the waveform/player, and choose **Keep full recording** or **Approve trimmed export**. Adjust the endpoint in seconds if needed. Then choose **Download selected** to finish the approved export. This button also prepares local files. Other tracks can finish while one waits for review. The detection is a review aid, not proof of where music artistically ends.
+
+Use **Export crate** to generate an ordered relative-path M3U8 and report beside verified files. In Rekordbox use File → Import → Import Playlist. Actual Rekordbox-version and hardware acceptance remain pending; DeckPrep does not modify Rekordbox databases or write device databases.
+
+This development beta is not a stable release. [Testing and remaining acceptance gates](docs/TESTING.md) include multi-machine use, representative matching accuracy, actual Rekordbox import, accessibility checks, signing, and exact binary redistribution review. Public provider availability can change. Inspection supports recordings up to two hours; network/process stages have bounded timeouts. Diagnostics are explicit and omit music titles, source URLs and local paths by default. No telemetry or music uploads are added.
 
 ## Public link support
 
@@ -31,8 +41,8 @@ Public pages can change or expose only part of a playlist. DeckPrep reports an i
 
 ## Export
 
-- MP3 at 320 kbps and 44.1 kHz stereo, with ID3 tags and artwork when available. Encoding cannot improve the quality of its source.
-- Files are named `Song Title.mp3` or `Song Title (Mix).mp3`, without playlist numbers. If two different tracks would use the same name, DeckPrep adds the artist as a suffix. Existing files with matching artist and title are skipped.
+- Newly encoded MP3 at 320 kbps and 44.1 kHz stereo, with ID3 tags and artwork when available. Encoding cannot improve the quality of its source.
+- Files are named `Song Title.mp3` or `Song Title (Mix).mp3`, without playlist numbers. If two different tracks would use the same name, DeckPrep adds the artist as a suffix. Existing outputs are reused only when their DeckPrep identity manifest, content hash, and decoded audio agree. Legacy files are preserved and a new name is chosen.
 - **No subfolders:** `Destination\Song Title.mp3`. **Folders by artist:** `Destination\Artist\Song Title.mp3` (missing names use `Unknown Artist`). **Folders by genre:** `Destination\Genre\Song Title.mp3`; DeckPrep reads genre during export when available and uses `Unknown Genre` when the source has none. **DJ Sampler Bank subfolder:** `Destination\DJ Sampler Bank\Song Title.mp3`, still a full-length song without pads or cue points.
 - The Album tag is filled only when the source supplies a real album. A playlist name is not used as the album.
 - **Balanced**, **Lower computer usage**, and **Faster** processing presets choose how many separate tracks run at once. Advanced settings allow a specific number. This is not a CPU thread count.
@@ -42,10 +52,11 @@ Public pages can change or expose only part of a playlist. DeckPrep reports an i
 
 ## Develop on Windows
 
-Requires Node.js 22 or newer.
+Requires Node.js 22.12 or newer (CI uses Node.js 24).
 
 ```powershell
 npm ci
+npm run setup:desktop
 npm run setup:engine
 npm start
 ```
@@ -54,6 +65,8 @@ npm start
 
 ```powershell
 npm test
+npm run test:desktop
+npm run test:scale
 npm run dist:portable
 ```
 

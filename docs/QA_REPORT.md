@@ -1,0 +1,16 @@
+# Beta 9 QA evidence — 2026-09-28
+
+Environment: Windows 10.0.26200, x64, Intel Core i7-12700H, Node 24.12.0, Electron 44.4.5. This is one development machine, not the three-machine release gate.
+
+- Engine/regression suite: 43 tests passed.
+- Actual sandboxed Electron: local import -> generated 3s tone + 15s quiet tail -> waveform/player -> close and restore review -> approve 5s trim -> decoded MP3 -> relative M3U8. Source bytes unchanged. No renderer errors.
+- Synthetic desktop input/render/search at 100 tracks: 88ms / 15ms; 500: 174ms / 33ms; 1000: 314ms / 51ms. These are single-run observations, not latency guarantees.
+- Synthetic matching/save+restore at 100: 6ms / 9ms; 500: 11ms / 6ms; 1000: 18ms / 7ms. Node process RSS 51-52MB; this is not total Electron/process memory.
+- Controlled cancellation test: active workers stop, queued jobs do not start, completion fires once after durable callbacks; under the five-second test bound.
+- Dependency installation audit reported zero known npm vulnerabilities; this is not a full security or licensing audit.
+
+Failed attempts: non-escalated Electron test hit a Playwright transport assertion inside the shell sandbox. The same test with desktop-process access passed. The first runtime launch needed the pinned Electron binary downloaded; setup:desktop is now explicit in development/CI. Initial packaging startup was slow; do not mistake missing console output for a successful build.
+
+Packaged desktop: dist/win-unpacked/DeckPrep.exe passed the same workflow. Packaged load+render times: 99/178/301ms; search 16/33/51ms for 100/500/1000 tracks. Authenticode status: NotSigned. Final portable executable check/checksum remain to record in PROGRESS.
+
+Actual Rekordbox, 20 sessions/two weeks, independent computers, accessibility assistive technology, representative 200-case accuracy, signing and binary redistribution gates remain open.

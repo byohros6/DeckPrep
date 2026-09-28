@@ -14,3 +14,5 @@ Failed attempts: non-escalated Electron test hit a Playwright transport assertio
 Packaged desktop: dist/win-unpacked/DeckPrep.exe passed the same workflow. Packaged load+render times: 99/178/301ms; search 16/33/51ms for 100/500/1000 tracks. Final portable executable --check-engines returned success=true and export=true. Authenticode status: NotSigned. SHA-256 for local DeckPrep-Portable-1.4.0-beta.9.exe: 404CE3F52979C4D3D0272C3139CA46EEEDBBEF21F05B1415BC10E03A8F2C8DA3. CI builds may have different hashes; use their associated checksum artifact.
 
 Actual Rekordbox, 20 sessions/two weeks, independent computers, accessibility assistive technology, representative 200-case accuracy, signing and binary redistribution gates remain open.
+
+Hosted Windows CI passed for implementation commit 4b3cdc0, including all source/packaged tests and portable export: https://github.com/byohros6/DeckPrep/actions/runs/36473829849 . A hosted test runner does not count as independent-user beta acceptance.

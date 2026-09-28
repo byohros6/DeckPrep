@@ -58,3 +58,4 @@
 - Commits ea5534f, 518f4fe and 4b3cdc0 pushed to codex/deckprep-reliability. Draft PR #2 opened and attached; dependent on PR #1, not merged.
 - Windows CI was in progress when this checkpoint was recorded; not claimed passed. Next: inspect CI result, then restore cancellation/operation exclusion with real IPC tests.
 - Audio inspection currently downsamples to 8kHz; high-frequency-only material and threshold edge cases need broader generated fixtures before treating inspection as comprehensive.
+- Windows CI subsequently PASSED for implementation commit 4b3cdc0: https://github.com/byohros6/DeckPrep/actions/runs/36473829849 . All steps passed, including source/packaged desktop, portable generated-audio export and artifact upload. Documentation-only follow-up runs were still in progress at last observation; this evidence is tied to 4b3cdc0.

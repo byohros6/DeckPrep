@@ -5,7 +5,7 @@
 - Baseline: 1.4.0-beta.8 / 4c1d3cc, existing branch codex/deckprep-1-4-upgrade ahead of main. New implementation branch: codex/deckprep-reliability, preserving that work.
 - Untracked `.dajent-analysis/` is unrelated extracted third-party research; do not stage it.
 - Git fetch/push works with sandbox escalation. Draft PR: https://github.com/byohros6/DeckPrep/pull/2 (base is the existing beta PR #1 branch). No merge, tag or release published.
-- Baseline tests passed in planning: 32. Current implementation suite: 44 passed; actual desktop review/restore/trim/crate flow and match-conflict IPC passed at beta.10 with maximize assertion.
+- Baseline tests passed in planning: 32. Current implementation suite: 45 passed; actual desktop review/restore/trim/crate flow and match-conflict IPC passed at beta.10 with maximize assertion.
 
 ## Milestone status
 - A reliability: core implementation and regression checks in place; further hardening remains below.
@@ -72,4 +72,9 @@
 - Current beta UI now widens the detail panel, wraps full candidate titles and visible reasons, labels incompatible recordings "Wrong version", and keeps text readable. The manual choose IPC recomputes version compatibility, so the disabled UI is not the only guard. Restore drops a known conflicting saved choice; start-download also refuses one.
 - Tests: 44/44 engine tests passed, including a named-remix compatibility case. Actual Electron E2E passed local import/review/export plus a crafted saved conflicting recording: its complete title stayed visible, its choice was disabled, the main IPC rejected a direct choose request, and restore explained the conflict. Screenshot: ignored local `dist/qa-match-review-beta10.png`.
 - This is a narrow usability/safety fix in the old interface. The Guided/Studio prototype and automatic speed/OCR remain separate planned work. Hosted Windows CI on this checkpoint still to verify after push.
+
+### Checkpoint 8 — folder semantics audited
+- A closer inspection found `mode === 'sampler'` bypassed two short-SoundCloud-preview checks in DownloadQueue. This contradicted the visible folder-only explanation and could count a preview as a prepared song. Removed both exceptions; local intentional short audio remains supported. Updated README and redesign brief with the corrected behavior.
+- Validation: `npm test` 45/45 passed, including a new regression that the same 30-second SoundCloud preview is rejected for both flat and sampler layouts. Latest full desktop E2E was checkpoint 7; it did not exercise this specific SoundCloud guard. Hosted CI for this final engine change still pending.
+- Next: push checkpoint 8, inspect Windows CI, then continue restore/operation exclusion and measure throughput before changing concurrency defaults.
 - Next: commit/push beta.10 design checkpoint and inspect hosted CI. Continue original reliability hardening and performance profiling before full UI implementation.

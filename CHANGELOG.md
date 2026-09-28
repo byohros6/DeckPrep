@@ -4,6 +4,7 @@
 
 - Open the Windows app maximized and verify that behavior in the desktop workflow.
 - Widen match details, wrap full candidate titles, display version evidence, and block incompatible manual choices and conflicting saved selections.
+- Keep short SoundCloud preview rejection independent of folder layout; the legacy Sampler Bank folder no longer bypasses that guard.
 - Add a clickable guided/studio interface concept and a detailed redesign backlog informed by user feedback. The prototype is illustrative; screenshot OCR and the new interface are not yet part of the app.
 
 

@@ -141,7 +141,7 @@ export class DownloadQueue {
       Object.assign(track, metadata);
       this.onTrackProgress(track);
     }
-    if (track.source === 'soundcloud' && track.durationSec > 0 && track.durationSec <= 35 && this.mode !== 'sampler') {
+    if (track.source === 'soundcloud' && track.durationSec > 0 && track.durationSec <= 35) {
       throw new Error('SoundCloud supplied only a short preview for this track');
     }
     if (!track.localPath && this.mode === 'genre' && !track.genre) {
@@ -177,7 +177,7 @@ export class DownloadQueue {
     });
     if (this.isCancelled) { track.status = 'cancelled'; return; }
     if (/^https:\/\/(?:[^/]+\.)?soundcloud\.com\//i.test(candidate.selectedUrl)
-      && candidate.durationSec > 0 && candidate.durationSec <= 35 && this.mode !== 'sampler') {
+      && candidate.durationSec > 0 && candidate.durationSec <= 35) {
       throw new Error('This SoundCloud link supplies only a short preview');
     }
     track.selectedRecording = {...(track.selectedRecording || {}), url: candidate.selectedUrl,

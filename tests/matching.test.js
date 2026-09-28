@@ -4,6 +4,19 @@ import { rankCandidates } from '../src/main/engine/matching.js';
 
 const track = { artist: 'Peggy Gou', title: '(It Goes Like) Nanana', mix: '', durationSec: 231 };
 
+test('explicit variants never auto-match a plain recording at identical duration', () => {
+  for (const suffix of ['Live', 'Instrumental', 'Clean', 'Explicit', 'Sped Up', 'Slowed', 'Acapella', 'Cover', 'Extended Mix', 'Radio Edit']) {
+    const result = rankCandidates(track, [{url: 'https://youtube.com/watch?v=variant', artist: track.artist, title: `${track.title} (${suffix})`, durationSec: track.durationSec}]);
+    assert.equal(result.chosen, null, suffix);
+  }
+});
+
+test('Hebrew tokens distinguish matching from unrelated titles', () => {
+  const requested = {artist: 'עומר אדם', title: 'בת ים', durationSec: 200};
+  assert.ok(rankCandidates(requested, [{url: 'https://youtube.com/watch?v=one', ...requested}]).chosen);
+  assert.equal(rankCandidates(requested, [{url: 'https://youtube.com/watch?v=two', artist: requested.artist, title: 'שיר אחר', durationSec: 200}]).chosen, null);
+});
+
 test('a strong title, artist, and duration match can be selected automatically', () => {
   const result = rankCandidates(track, [
     { url: 'https://soundcloud.com/example/track', title: '(It Goes Like) Nanana', artist: 'Peggy Gou', durationSec: 232 },

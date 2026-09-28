@@ -25,6 +25,13 @@ try {
     };
   }, {source, destination});
   let page = await application.firstWindow();
+  let maximized = false;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    maximized = await application.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].isMaximized());
+    if (maximized) break;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  assert.equal(maximized, true, 'the main window should open maximized');
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.locator('#localFilesBtn').click();
   await page.waitForFunction(() => document.querySelectorAll('tr[data-index]').length === 1);

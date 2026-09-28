@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.0-beta.10 (design checkpoint)
+
+- Open the Windows app maximized and verify that behavior in the desktop workflow.
+- Add a clickable guided/studio interface concept and a detailed redesign backlog informed by user feedback. The prototype is illustrative; screenshot OCR and the new interface are not yet part of the app.
+
+
 ## 1.4.0-beta.9 (implementation preview)
 
 - Reject explicit conflicting recordings (live, instrumental, clean/explicit, speed variants) and preserve Unicode matching and candidate evidence.

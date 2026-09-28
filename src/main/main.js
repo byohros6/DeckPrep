@@ -82,7 +82,7 @@ function createWindow() {
     height: 800,
     minWidth: 760,
     minHeight: 560,
-    show: !isSmokeTest,
+    show: false,
     backgroundColor: '#0d1117',
     title: 'DeckPrep',
     titleBarStyle: 'hidden',
@@ -92,6 +92,13 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true
+    }
+  });
+
+  mainWindow.once('ready-to-show', () => {
+    if (!isSmokeTest) {
+      mainWindow.maximize();
+      mainWindow.show();
     }
   });
 

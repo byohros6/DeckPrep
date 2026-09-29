@@ -5,17 +5,17 @@
 - Baseline: 1.4.0-beta.8 / 4c1d3cc, existing branch codex/deckprep-1-4-upgrade ahead of main. New implementation branch: codex/deckprep-reliability, preserving that work.
 - Untracked `.dajent-analysis/` is unrelated extracted third-party research; do not stage it.
 - Git fetch/push works with sandbox escalation. Draft PR: https://github.com/byohros6/DeckPrep/pull/2 (base is the existing beta PR #1 branch). No merge, tag or release published.
-- Baseline tests passed in planning: 32. Current beta 11 suite: 47 passed. Source and locally packaged desktop generated-link download/review/restore/trim, cache startup and match-conflict IPC passed with maximize assertion. Local portable generated-audio export passed; hosted beta 11 CI is pending. Hosted beta 10 evidence remains in checkpoint 12.
+- Baseline tests passed in planning: 32. Current beta 11 suite: 47 passed. Source and packaged desktop generated-link download/review/restore/trim, cache startup and match-conflict IPC passed with maximize assertion. Portable generated-audio export passed locally and in hosted Windows CI for implementation commit ef38b84; see checkpoint 13.
 
 ## Milestone status
 - A reliability: core implementation and regression checks in place; further hardening remains below.
 - B audio review/UI: generated-audio flow implemented and tested; actual assistive-technology/high-DPI acceptance pending.
 - C local audio/Rekordbox playlist: retired by owner direction after beta 10. Entry points removed in beta 11; legacy saved local tracks remain readable/processable.
-- D release tooling/docs: CI/diagnostics/notices/docs added; beta 11 packaged desktop and portable export passed locally, draft PR opened. Hosted beta 11 and external user/machine gates remain open.
+- D release tooling/docs: CI/diagnostics/notices/docs added; beta 11 packaged desktop and portable export passed locally and in hosted Windows CI, draft PR opened. External user/machine gates remain open.
 - E commercial validation: deferred until repeat-use evidence and license/provider review.
 
 ## Next steps
-1. Push beta 11 and inspect hosted Windows source/packaged/portable checks, then update draft PR #2 for the downloader-only scope. Keep it in draft; do not merge or publish stable.
+1. Review draft PR #2 and the beta 11 CI evidence tied to ef38b84. Keep it in draft; do not merge or publish stable.
 2. Restore cancellation, competing input/import/export exclusion, close-during-restore, and conservative orphaned review-cache cleanup passed local actual desktop checks. Continue with forced-crash/disk fault injection.
 3. Validate UX_REDESIGN.md with user/DJ feedback, then implement full match comparison/preview, a plain-language stage flow, local OCR, and measured automatic speed in dependency order. The prototype is not production UI.
 4. Finish fault injection, renderer separation, 200 labeled matches, and external beta/accessibility/signing/redistribution gates in TESTING.md. Rekordbox is no longer a release gate.
@@ -105,4 +105,5 @@
 - `npm test` passed 47/47. Actual source Electron E2E passed using generated WAV served from a local test HTTP source: download → quiet-tail review → close/restore → approved trim → verified MP3. It also asserted retired UI/preload entry points were absent, old generated cache cleanup, restore operation exclusion, maximized startup, and wrong-version IPC rejection. The local server source bytes stayed unchanged. Final source 100/500/1000 row load+render: 102/185/294ms; search 20/31/46ms, single runs.
 - Local beta 11 portable build completed. Actual `dist/win-unpacked/DeckPrep.exe` passed the same E2E; packaged 100/500/1000 row load+render: 97/171/283ms; search 22/34/44ms. Portable `--check-engines` generated-audio export returned `success=true`, `export=true`. Local SHA-256 of `DeckPrep-Portable-1.4.0-beta.11.exe`: `2160CF1C05782B35BB5AA88F9F106C3E3B69CFE03A90F5902210516C221D25C1`. Authenticode is NotSigned; builder's signing log does not establish a signature.
 - First portable check invocation failed before writing its result because the result path contained a space and was split by `Start-Process` argument handling. Re-running with a space-free temporary result path passed. This was a test invocation issue; no app change was made for it. CI uses its runner temp path.
-- Package and lockfile are both 1.4.0-beta.11. No tag, merge or release. Next: commit/push and verify hosted Windows CI for the exact beta 11 commit, then update draft PR #2. Historical beta 9/10 Rekordbox/local checks above are not active acceptance gates.
+- Implementation commit ef38b84 passed both hosted Windows runs, including source tests, source/packaged downloader desktop E2E, portable generated-audio export, checksums and artifact upload: https://github.com/byohros6/DeckPrep/actions/runs/36513552054 and https://github.com/byohros6/DeckPrep/actions/runs/36513548120 . This evidence is for that exact code commit; later documentation edits are not claimed independently tested.
+- Package and lockfile are both 1.4.0-beta.11. No tag, merge or release. Next: forced-crash/disk-fault reliability checks, representative matching accuracy, downloader UI validation and external Windows beta evidence. Historical beta 9/10 Rekordbox/local checks above are not active acceptance gates.

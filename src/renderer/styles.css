@@ -90,6 +90,7 @@ img{-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
 .selection-notice{padding:9px 20px;background:#202a34;border-bottom:1px solid #3d566e;color:#bbd2e5;font-size:11px}.selection-notice strong{color:#e4f1fb}
 .loading-notice>div{display:flex;flex-direction:column;gap:3px}.loading-notice strong{font-size:12px}.loading-notice span:not(.loading-spinner){font-size:11px;color:#b2c5d5}
 .source-warning{display:flex;align-items:center;justify-content:space-between;gap:14px;line-height:1.4}.source-warning-action{border:1px solid #9a744f;background:#3b3025;color:#ffdbab;border-radius:3px;padding:5px 8px;white-space:nowrap;font-size:11px;cursor:pointer}.source-warning-action:hover,.source-warning-action:focus-visible{background:#56402b;outline:1px solid #d9a66d}
+.source-warning:has(.partial-playlist-choice){flex-wrap:wrap}.partial-playlist-choice{display:flex;align-items:center;gap:6px;white-space:nowrap;color:#fff0d3;cursor:pointer}.partial-playlist-choice input{accent-color:#e4a554}#folderName{margin-bottom:1px}
 .loading-spinner{display:inline-block;width:16px;height:16px;border:2px solid #4b657a;border-top-color:#90ccff;border-radius:50%;animation:deckprep-spin .75s linear infinite;flex:none}
 @keyframes deckprep-spin{to{transform:rotate(360deg)}}
 .restore-dialog{width:min(500px,100%);background:#202429;border-color:#4d5863;padding:27px;box-shadow:0 24px 70px #000c;border-radius:6px}

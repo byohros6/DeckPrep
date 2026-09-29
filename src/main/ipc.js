@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { validateSender, validSelection, validatePreferences } from './security.js';
+import { validateSender, validSelection, validatePreferences, validateFolderName } from './security.js';
 import fs from 'node:fs';
 import { checkBinaries, engineVersions } from './engine/binaryManager.js';
 import { parseInput, fetchTrackDetails } from './engine/sources.js';
@@ -24,12 +24,23 @@ let sessionContext = {};
 let progressSaveTimer;
 const rendererUrl = pathToFileURL(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../renderer/index.html')).href;
 const busy = () => activeQueue || activeMetadata || activeMatching || activeParse || activeRestore;
+function outputDirectory(parent, folderName, create = false) {
+  const name = validateFolderName(folderName || '');
+  const directory = name ? path.join(parent, name) : parent;
+  if (fs.existsSync(directory)) {
+    const info = fs.lstatSync(directory);
+    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('The output folder is not a regular folder');
+  } else if (create) {
+    fs.mkdirSync(directory);
+  }
+  return directory;
+}
 function persist() { return parsedTracks.length ? saveSession({...sessionContext, tracks: parsedTracks, destinationDir: selectedDestination || ''}) : Promise.resolve(); }
 function installTracks(result) {
   if (!result.tracks.length) throw new Error(result.warning || 'No tracks could be imported');
   if (result.tracks.length > 10000) throw new Error('Queues are limited to 10,000 tracks');
   parsedTracks = result.tracks.map((track, index) => ({...track, id: randomUUID(), index: index + 1, selected: true, status: 'pending', requested: {title: track.title, artist: track.artist, mix: track.mix || '', durationSec: track.durationSec || 0}}));
-  sessionContext = {source: result.source, collection: {title: result.title, creator: result.creator, artworkUrl: result.artworkUrl, sourceUrl: result.sourceUrl, warning: result.warning}};
+  sessionContext = {source: result.source, collection: {title: result.title, creator: result.creator, artworkUrl: result.artworkUrl, sourceUrl: result.sourceUrl, warning: result.warning, totalCount: result.totalCount, incomplete: result.incomplete}};
   return {...result, tracks: parsedTracks};
 }
 export async function shutdownJobs() {
@@ -163,7 +174,10 @@ export function registerIpcHandlers(mainWindow) {
     return selectedDestination;
   });
   handle('open-folder', async (_, folder) => {
-    if (folder === selectedDestination && fs.existsSync(folder)) return shell.openPath(folder);
+    if (folder === selectedDestination && fs.existsSync(folder)) {
+      const directory = outputDirectory(folder, sessionContext.folderName);
+      if (fs.existsSync(directory)) return shell.openPath(directory);
+    }
     return 'Choose a destination folder first';
   });
   handle('open-source-link', async (_, rawUrl) => {
@@ -306,7 +320,8 @@ export function registerIpcHandlers(mainWindow) {
     if (activeQueue) return { success: false, error: 'A batch is already running' };
     if (busy()) return { success: false, error: 'Wait for track review to finish' };
     if (!parsedTracks.length) return { success: false, error: 'Analyze a link or tracklist first' };
-    try { validatePreferences(options || {}); } catch (error) { return {success: false, error: error.message}; }
+    let preferences;
+    try { preferences = validatePreferences(options || {}); } catch (error) { return {success: false, error: error.message}; }
     if (!Array.isArray(options?.selectedIndices) || !options.selectedIndices.length || !options.selectedIndices.every(Number.isSafeInteger)) {
       return { success: false, error: 'Select at least one track' };
     }
@@ -317,11 +332,18 @@ export function registerIpcHandlers(mainWindow) {
     if (selectedTracks.some(track => track.needsMetadata)) return { success: false, error: 'Fetch details for selected tracks before downloading' };
     if (selectedTracks.some(track => track.matchUrl && track.candidates?.some(candidate => candidate.url === track.matchUrl && !candidateVersionCompatible(track, candidate)))) return { success: false, error: 'A selected recording conflicts with the requested version; review its match first' };
     if (selectedTracks.some(track => !track.localPath && (!track.directUrl || track.blockedOriginal) && !track.matchUrl)) return { success: false, error: 'Review audio matches for selected tracks before downloading' };
+    if (sessionContext.collection?.incomplete && options.allowPartialPlaylist !== true) {
+      return { success: false, error: 'This playlist is incomplete. Confirm that you want only the available tracks, or paste the full tracklist.' };
+    }
     if (options.destinationDir !== selectedDestination || !selectedDestination || !fs.existsSync(selectedDestination)) {
       return { success: false, error: 'Choose a destination folder' };
     }
+    let directory;
+    try { directory = outputDirectory(selectedDestination, preferences.folderName, true); }
+    catch (error) { return { success: false, error: error.message }; }
+    sessionContext.folderName = preferences.folderName;
     const queue = new DownloadQueue({
-      destinationDir: selectedDestination,
+      destinationDir: directory,
       cacheDir: path.join(app.getPath('userData'), 'audio-cache'),
       concurrency: options.concurrency,
       mode: options.mode,

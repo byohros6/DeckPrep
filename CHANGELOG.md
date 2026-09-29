@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.0-beta.12 (playlist folder and coverage)
+
+- Let a download go into a named folder such as `DAIR` inside the destination chosen by the user. Validate the folder name, preserve the choice across restarts, and verify the generated-audio desktop export lands in that folder.
+- Compare Spotify's public playlist preview with the public page's advertised item count when available. Show the exact shortfall and require an explicit partial-download choice before starting an incomplete queue; main IPC checks this too.
+- Keep source metadata honest: an album or genre is still blank when the public preview does not provide it. Spotify sign-in and full third-party playlist access are not implemented.
+
 ## 1.4.0-beta.11 (downloader scope)
 
 - Focus the app on downloading from public links and pasted tracklists. Remove Add audio files, Add folder, and Create playlist file from the desktop interface and preload/main IPC paths.

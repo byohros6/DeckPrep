@@ -12,6 +12,7 @@ import { rankCandidates } from '../src/main/engine/matching.js';
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'deckprep-e2e-'));
 const source = path.join(root, 'עומר - Test song.wav');
 const destination = path.join(root, 'crate');
+const outputFolder = path.join(destination, 'DAIR');
 await fs.mkdir(destination);
 const ffmpeg = await resolveBinary('ffmpeg');
 await promisify(execFile)(ffmpeg, ['-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=3', '-af', 'apad=pad_dur=15', source]);
@@ -25,7 +26,7 @@ await new Promise(resolve => mediaServer.listen(0, '127.0.0.1', resolve));
 const directUrl = `http://127.0.0.1:${mediaServer.address().port}/source.wav`;
 await fs.mkdir(path.join(root, 'state'), {recursive: true});
 await fs.writeFile(path.join(root, 'state', 'session.json'), JSON.stringify({
-  version: 2, source: 'youtube', phase: 'review', collection: {title: 'Generated link'},
+  version: 2, source: 'youtube', phase: 'review', collection: {title: 'Generated link', incomplete: true, warning: 'Only one of two test tracks is available.'},
   tracks: [{id: 'generated-link', index: 1, artist: 'Generated', title: 'Test song',
     directUrl, selected: true, status: 'pending'}]
 }));
@@ -60,6 +61,12 @@ try {
   await page.locator('#resumeSessionBtn').click();
   await page.waitForFunction(() => document.querySelectorAll('tr[data-index]').length === 1);
   await page.locator('#browseBtn').click();
+  await page.locator('#folderName').fill('DAIR');
+  assert.equal(await page.locator('#startBtn').isDisabled(), true, 'a known partial playlist must not silently download');
+  const partialDenied = await page.evaluate(options => window.djAPI.startDownload(options), {destinationDir: destination, folderName: 'DAIR', selectedIndices: [1], concurrency: 1, mode: 'flat'});
+  assert.equal(partialDenied.success, false, 'main IPC must reject an unconfirmed partial playlist');
+  assert.match(partialDenied.error, /incomplete/);
+  await page.locator('#partialPlaylistConsent').check();
   assert.match(await page.locator('#startBtn').innerText(), /Download selected/);
   assert.equal(await page.locator('.support-menu').evaluate(element => element.open), false);
   await page.locator('#startBtn').click();
@@ -75,6 +82,8 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.locator('#resumeSessionBtn').click();
   await page.waitForFunction(() => document.querySelector('.status-chip')?.textContent === 'Review ending');
+  assert.equal(await page.locator('#folderName').inputValue(), 'DAIR');
+  await page.locator('#partialPlaylistConsent').check();
   await page.locator('tr[data-index]').click();
   await page.waitForFunction(() => document.querySelector('audio')?.duration > 17);
   await page.locator('#audioReview input').fill('5');
@@ -82,10 +91,10 @@ try {
   await page.locator('#startBtn').click();
   await page.waitForFunction(() => document.querySelector('.status-chip')?.textContent === 'Verified');
   await page.waitForFunction(() => document.querySelector('#cancelBtn').disabled);
-  const files = await fs.readdir(destination);
+  const files = await fs.readdir(outputFolder);
   assert.ok(files.some(file => file.endsWith('.mp3')));
   assert.ok(!files.some(file => file.endsWith('.m3u8')));
-  const manifest = JSON.parse(await fs.readFile(path.join(destination, files.find(file => file.endsWith('.mp3.deckprep.json'))), 'utf8'));
+  const manifest = JSON.parse(await fs.readFile(path.join(outputFolder, files.find(file => file.endsWith('.mp3.deckprep.json'))), 'utf8'));
   assert.ok(Math.abs(manifest.verification.durationSec - 5) < 0.1);
   assert.equal(manifest.trimDecision.action, 'trim');
   assert.deepEqual(await fs.readFile(source), original);
@@ -112,7 +121,7 @@ try {
   const wrong = {url: wrongUrl, title: 'Kerri Chandler feat. Troy Denari - The Way It Goes (Original Mix, Long Club Version)', artist: 'Kerri Chandler', durationSec: 488, provider: 'YouTube'};
   const candidates = rankCandidates(requested, [wrong]).candidates;
   assert.equal(candidates[0].evidence.versionCompatible, false);
-  const exportedAudio = path.join(destination, files.find(file => file.endsWith('.mp3')));
+  const exportedAudio = path.join(outputFolder, files.find(file => file.endsWith('.mp3')));
   const completed = Array.from({length: 30}, (_, index) => ({id: `verified-${index}`, artist: 'Generated', title: `Verified ${index}`, selected: false, status: 'done', outputPath: exportedAudio}));
   await fs.writeFile(path.join(root, 'state', 'session.json'), JSON.stringify({version: 2, source: 'spotify', collection: {title: 'Version review'}, tracks: [{...requested, candidates, matchUrl: wrongUrl, matchState: 'chosen'}, ...completed]}));
   application = await electron.launch({...(executable ? {executablePath: executable} : {}), args: [...(executable ? [] : ['.']), '--test-user-data=' + path.join(root, 'state')], timeout: 30000});

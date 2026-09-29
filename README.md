@@ -2,7 +2,7 @@
 
 DeckPrep is a Windows desktop downloader for public music links and pasted tracklists. Load tracks, check uncertain recording matches and suspicious audio endings, then download verified MP3s to a folder you choose. The queue can be restored after an interrupted session.
 
-**Current source version:** 1.4.0-beta.11 · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Master plan](docs/MASTER_PLAN.md) · [Progress](docs/PROGRESS.md) · [Interactive redesign concept](prototypes/deckprep-concept.html) (sample data, not the app)
+**Current source version:** 1.4.0-beta.12 · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Master plan](docs/MASTER_PLAN.md) · [Progress](docs/PROGRESS.md) · [Interactive redesign concept](prototypes/deckprep-concept.html) (sample data, not the app)
 
 ![Playlist review in DeckPrep](docs/images/playlist-review.png)
 
@@ -11,7 +11,7 @@ DeckPrep is a Windows desktop downloader for public music links and pasted track
 1. Paste a public track, album, or playlist link, several links on separate lines, or an artist–title tracklist. Click **Load tracks**.
 2. Search and filter the queue, inspect a track, and uncheck anything you do not want. Shift-click a row checkbox to select or clear the range from the last checkbox; Ctrl-click a row to toggle it. The checkbox at the top selects or clears all **shown** rows, and **Clear selection** clears the whole queue. Repeated artist/title/version entries are marked as possible duplicates, with later copies unchecked by default. SoundCloud playlists fill in track titles and artists before audio downloads start.
 3. For catalog-only imports and tracklists, click **Find matches**. DeckPrep searches YouTube first, then SoundCloud when a track still needs a match. It compares artist, title, version, and available duration, accepts close matches automatically, and leaves uncertain versions for review.
-4. Choose a destination and click **Download selected**. Watch per-track status and review the batch summary. If a source cannot provide exportable audio, DeckPrep searches for another recording and continues with a confident match. Uncertain results wait for you in the track detail view. Other failed rows can be selected for retry.
+4. Choose a parent destination, enter a folder name such as **DAIR**, and click **Download selected**. Files go into `Destination\DAIR\`. Watch per-track status and review the batch summary. If a source cannot provide exportable audio, DeckPrep searches for another recording and continues with a confident match. Uncertain results wait for you in the track detail view. Other failed rows can be selected for retry.
    Turn on **Open folder when finished** beside the destination if you want File Explorer to appear after a successful batch. It is off by default; **Open folder** remains available at the bottom of the app.
 5. If you close the app before finishing, it asks whether to restore or discard the saved queue when reopened. Restoring does not start downloads. You can stop a long restore and retry later; the saved queue remains available.
 
@@ -35,13 +35,13 @@ This development beta is not a stable release. [Testing and remaining acceptance
 | Apple Music | Public song, album, and playlist page metadata | Finds candidate recordings on supported audio sources; does not extract Apple Music streams |
 | Pasted tracklist | Artist–title lines, with optional mix and duration | Finds candidate recordings for review |
 
-Public pages can change or expose only part of a playlist. DeckPrep reports an incomplete Apple Music import and warns that Spotify's public preview cannot verify the full playlist length. Paste a complete tracklist if tracks are missing. Private playlists and account connections are planned for later. SoundCloud's quick public metadata does not always include duration.
+Public pages can change or expose only part of a playlist. For Spotify, DeckPrep compares the public preview with the public page's item count when available. If the preview is short, it shows the missing count and requires you to explicitly choose a partial download; paste a complete tracklist to include every song. If the public count is unavailable, completeness remains unverified. Spotify sign-in is not supported: its current playlist-items API restricts access to owners/collaborators, even when another signed-in user can see the playlist in Spotify. SoundCloud's quick public metadata does not always include duration.
 
 ## Downloaded files
 
 - Newly encoded MP3 at 320 kbps and 44.1 kHz stereo, with ID3 tags and artwork when available. Encoding cannot improve the quality of its source.
 - Files are named `Song Title.mp3` or `Song Title (Mix).mp3`, without playlist numbers. If two different tracks would use the same name, DeckPrep adds the artist as a suffix. Existing outputs are reused only when their DeckPrep identity manifest, content hash, and decoded audio agree. Legacy files are preserved and a new name is chosen.
-- **All songs together:** `Destination\Song Title.mp3`. **Folders by artist:** `Destination\Artist\Song Title.mp3` (missing names use `Unknown Artist`). **Folders by genre:** `Destination\Genre\Song Title.mp3`; DeckPrep reads genre during download when available and uses `Unknown Genre` when the source has none. **DJ Sampler Bank folder:** `Destination\DJ Sampler Bank\Song Title.mp3`; this only changes the folder, without creating pads or cue points. Short SoundCloud previews remain rejected in every layout.
+- **All songs together:** `Destination\DAIR\Song Title.mp3` when the new-folder name is DAIR. **Folders by artist:** `Destination\DAIR\Artist\Song Title.mp3` (missing names use `Unknown Artist`). **Folders by genre:** `Destination\DAIR\Genre\Song Title.mp3`; DeckPrep reads genre during download when available and uses `Unknown Genre` when the source has none. **DJ Sampler Bank folder:** `Destination\DAIR\DJ Sampler Bank\Song Title.mp3`; this only changes the folder, without creating pads or cue points. Short SoundCloud previews remain rejected in every layout.
 - The Album tag is filled only when the source supplies a real album. A playlist name is not used as the album.
 - **Balanced**, **Lower computer usage**, and **Faster** processing presets choose how many separate tracks run at once. Advanced settings allow a specific number. This is not a CPU thread count.
 - Concurrent downloads, per-track errors, cancellation, existing-file checks, and retry selection.

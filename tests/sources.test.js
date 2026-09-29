@@ -61,6 +61,25 @@ test('Spotify preview keeps remix details and reports unverified playlist length
   }
 });
 
+test('Spotify preview reports the missing playlist items instead of claiming a complete import', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async url => {
+    if (String(url).includes('/embed/')) {
+      const entity = {title: 'Set', trackList: [{title: 'One', subtitle: 'Artist', duration: 180000}]};
+      const data = {props: {pageProps: {state: {data: {entity}}}}};
+      return {ok: true, text: async () => `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(data)}</script>`};
+    }
+    return {ok: true, text: async () => '<meta property="og:description" content="Playlist · DJ · 118 items">'};
+  };
+  try {
+    const result = await parseInput('https://open.spotify.com/playlist/example');
+    assert.equal(result.tracks.length, 1);
+    assert.equal(result.totalCount, 118);
+    assert.equal(result.incomplete, true);
+    assert.match(result.warning, /117 are missing/);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test('SoundCloud playlist entries without titles stay in the queue and resolve to full metadata', () => {
   const url = 'https://soundcloud.com/moanrecordings/hector-couto-rendher-break-down-dennis-cruz-remix';
   const pending = normalizeTrack({ url, playlist_title: 'Deep tech/minimal/tech house extended' }, 'soundcloud', url, 1);

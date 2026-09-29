@@ -8,6 +8,16 @@ export function validSelection(indices, tracks) {
   return tracks.filter(track => ids.has(track.index));
 }
 
+export function validateFolderName(value) {
+  if (typeof value !== 'string') throw new Error('Invalid folder name');
+  const name = value.trim();
+  if (!name) return '';
+  if (name.length > 80 || name === '.' || name === '..' || /[<>:"/\\|?*\x00-\x1f]/.test(name) || /[. ]$/.test(name) || /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(name)) {
+    throw new Error('Choose a simple folder name without path characters');
+  }
+  return name;
+}
+
 export function validatePreferences(value) {
   const result = {};
   if ('input' in value) {
@@ -18,6 +28,7 @@ export function validatePreferences(value) {
     if (!['flat', 'artist', 'genre', 'sampler', 'partitioned'].includes(value.mode)) throw new Error('Invalid folder layout');
     result.mode = value.mode;
   }
+  if ('folderName' in value) result.folderName = validateFolderName(value.folderName);
   if ('concurrency' in value) {
     if (!Number.isInteger(value.concurrency) || value.concurrency < 1 || value.concurrency > 12) throw new Error('Invalid processing concurrency');
     result.concurrency = value.concurrency;

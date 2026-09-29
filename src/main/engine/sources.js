@@ -195,8 +195,26 @@ async function extractSpotify(url, signal) {
   const items = type === 'track' ? [entity] : entity.trackList || [];
   const tracks = items.map(item => spotifyTrack(item, type === 'album' ? title : '', artworkUrl)).filter(track => track.title);
   if (!tracks.length) throw new Error('No tracks found in this Spotify link');
+  let totalCount = null;
+  if (type === 'playlist') {
+    try {
+      const page = await fetchPublic(`https://open.spotify.com/playlist/${id}`, signal);
+      if (page.ok) {
+        const pageHtml = await page.text();
+        const description = [...pageHtml.matchAll(/<meta\b[^>]*>/gi)]
+          .find(([tag]) => /\bproperty=["']og:description["']/i.test(tag))?.[0]
+          ?.match(/\bcontent=["']([^"']*)["']/i)?.[1] || '';
+        const count = Number(description.match(/([\d,]+)\s+(?:items?|songs?)/i)?.[1]?.replaceAll(',', ''));
+        if (Number.isSafeInteger(count) && count > 0) totalCount = count;
+      }
+    } catch (error) { if (signal?.aborted) throw error; }
+  }
+  const incomplete = totalCount !== null && tracks.length < totalCount;
+  const warning = type !== 'playlist' ? '' : incomplete
+    ? `Spotify shows ${totalCount} items, but its public preview provided only ${tracks.length}. ${totalCount - tracks.length} are missing from this queue. Paste the complete tracklist before treating this as a full playlist.`
+    : totalCount === null ? `Spotify's public preview returned ${tracks.length} tracks. The full playlist length is unavailable here; compare with Spotify and paste a complete tracklist if tracks are missing.` : '';
   return { title, tracks, creator: entity.subtitle || entity.owner?.name || '', artworkUrl, sourceUrl: url,
-    warning: type === 'playlist' ? `Spotify's public preview returned ${tracks.length} tracks. The full playlist length is unavailable here; compare with Spotify and paste a complete tracklist if tracks are missing.` : '' };
+    totalCount, incomplete, warning };
 }
 
 export async function parseInput(input, signal) {
@@ -217,7 +235,7 @@ export async function parseInput(input, signal) {
         results.push({tracks: [], warning: type + ': ' + error.message});
       }
     }
-    return { source: 'links', title: `${lines.length} links`, tracks: results.flatMap(result => result.tracks), warning: results.map(result => result.warning).filter(Boolean).join(' \n'), inputs: results.map(result => ({title: result.title, warning: result.warning, count: result.tracks.length})) };
+    return { source: 'links', title: `${lines.length} links`, tracks: results.flatMap(result => result.tracks), incomplete: results.some(result => result.incomplete), warning: results.map(result => result.warning).filter(Boolean).join(' \n'), inputs: results.map(result => ({title: result.title, warning: result.warning, count: result.tracks.length})) };
   }
   const type = detectInputType(raw);
   if (type === 'text') {

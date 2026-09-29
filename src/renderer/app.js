@@ -108,7 +108,7 @@ function saveQueueNow() {
   const complete = selected.length && selected.every(track => ['done', 'skipped'].includes(track.status));
   return window.djAPI.saveSession({
     input: inputSource.value, source: collectionSource, collection: collectionInfo,
-    tracks: loadedTracks, destinationDir, mode: byId('crateMode').value,
+    tracks: loadedTracks, destinationDir, folderName: byId('folderName').value, mode: byId('crateMode').value,
     openFolderWhenFinished: byId('openFolderWhenFinished').checked,
     concurrency: Number(byId('concurrencyRange').value), performanceMode: byId('speedMode').value,
     phase: isDownloading ? 'downloading' : complete ? 'completed' : 'review'
@@ -156,6 +156,16 @@ function showSourceWarning(message) {
   const text = document.createElement('span');
   text.textContent = message;
   warning.appendChild(text);
+  if (collectionInfo.incomplete) {
+    const choice = document.createElement('label');
+    choice.className = 'partial-playlist-choice';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = 'partialPlaylistConsent';
+    checkbox.addEventListener('change', updateControls);
+    choice.append(checkbox, document.createTextNode(` Download only these ${loadedTracks.length} available tracks`));
+    warning.appendChild(choice);
+  }
   if (collectionSource === 'spotify') {
     const action = document.createElement('button');
     action.type = 'button';
@@ -342,8 +352,9 @@ function updateControls() {
   selectAll.checked = !!visible.length && visible.every(track => track.selected);
   selectAll.indeterminate = visible.some(track => track.selected) && !selectAll.checked;
   byId('clearSelectionBtn').disabled = !selected.length || isDownloading || isFetchingDetails || isFindingMatches || isLoadingInput;
-  startBtn.disabled = isLoadingInput || isDownloading || isFetchingDetails || isFindingMatches || !pending.length || !!needed.length || !!unresolved.length || !destinationDir;
-  startBtn.title = needed.length ? 'Fetch details for selected tracks first' : unresolved.length ? 'Review selected audio matches first' : !destinationDir ? 'Choose a destination folder' : !pending.length ? 'All selected tracks are complete' : '';
+  const partialUnconfirmed = collectionInfo.incomplete && !byId('partialPlaylistConsent')?.checked;
+  startBtn.disabled = isLoadingInput || isDownloading || isFetchingDetails || isFindingMatches || !pending.length || !!needed.length || !!unresolved.length || !destinationDir || partialUnconfirmed;
+  startBtn.title = needed.length ? 'Fetch details for selected tracks first' : unresolved.length ? 'Review selected audio matches first' : !destinationDir ? 'Choose a destination folder' : partialUnconfirmed ? 'Confirm that this download will omit missing playlist tracks' : !pending.length ? 'All selected tracks are complete' : '';
   byId('retryFailedBtn').hidden = !loadedTracks.some(track => track.status === 'error' && !track.blockedOriginal) || isDownloading;
   byId('cancelImportBtn').hidden = !isLoadingInput;
   updateMetadataBar();
@@ -668,6 +679,7 @@ byId('browseBtn').addEventListener('click', async () => {
   } catch (err) { appendLog(`Could not choose destination: ${err.message}`, 'err-msg'); }
 });
 byId('openFolderBtn').addEventListener('click', () => window.djAPI.openFolder(destinationDir));
+byId('folderName').addEventListener('input', () => { updateControls(); saveQueueSoon(); });
 byId('clearLogBtn').addEventListener('click', () => { logConsole.textContent = ''; logCount = 0; byId('activityCount').textContent = '0'; });
 byId('concurrencyRange').addEventListener('input', () => { byId('speedMode').value = 'custom'; updateSpeed(); saveQueueSoon(); });
 byId('speedMode').addEventListener('change', () => { updateSpeed(); saveQueueSoon(); });
@@ -697,7 +709,7 @@ async function beginDownload(indices) {
   saveQueueSoon();
   try {
     const result = await window.djAPI.startDownload({
-      destinationDir, selectedIndices: indices,
+      destinationDir, folderName: byId('folderName').value, allowPartialPlaylist: byId('partialPlaylistConsent')?.checked === true, selectedIndices: indices,
       concurrency: Math.max(1, Math.min(12, Number(byId('concurrencyRange').value) || 1)), mode: byId('crateMode').value,
       openFolderWhenFinished: byId('openFolderWhenFinished').checked
     });
@@ -794,6 +806,7 @@ byId('resumeSessionBtn').addEventListener('click', async () => {
     collectionInfo = session.collection || {};
     destinationDir = session.destinationDir || '';
     byId('destPath').value = destinationDir;
+    byId('folderName').value = session.folderName || '';
     byId('openFolderBtn').disabled = !destinationDir;
     if (typeof session.openFolderWhenFinished === 'boolean') {
       byId('openFolderWhenFinished').checked = session.openFolderWhenFinished;
@@ -884,7 +897,8 @@ function installResult(result) {
     selectionAnchorIndex = null;
     markDuplicates(true);
     collectionSource = result.source;
-    collectionInfo = { title: result.title, creator: result.creator, artworkUrl: result.artworkUrl, sourceUrl: result.sourceUrl, warning: result.warning };
+    collectionInfo = { title: result.title, creator: result.creator, artworkUrl: result.artworkUrl, sourceUrl: result.sourceUrl, warning: result.warning, totalCount: result.totalCount, incomplete: result.incomplete };
+    byId('folderName').value = result.title && result.source !== 'links' && result.source !== 'text' ? result.title.slice(0, 80).replace(/[<>:"/\\|?*]/g, '').replace(/[. ]+$/, '') : '';
     byId('queueSearch').value = '';
     byId('queueFilter').value = 'all';
     activeDetailIndex = null;

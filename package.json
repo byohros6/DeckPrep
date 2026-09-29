@@ -1,6 +1,6 @@
 {
   "name": "deckprep",
-  "version": "1.4.0-beta.11",
+  "version": "1.4.0-beta.12",
   "description": "Download and verify music from public links and tracklists",
   "main": "src/main/main.js",
   "type": "module",

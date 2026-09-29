@@ -9,6 +9,8 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { registerIpcHandlers, shutdownJobs, previewPath } from './ipc.js';
 import { resolveBinary } from './engine/binaryManager.js';
 import { DownloadQueue } from './engine/downloadQueue.js';
+import { pruneReviewCache } from './engine/reviewCache.js';
+import { readSession } from './sessionStore.js';
 import NodeID3 from 'node-id3';
 
 const execFileAsync = promisify(execFile);
@@ -247,7 +249,14 @@ app.whenReady().then(async () => {
     return net.fetch(pathToFileURL(file).href, {headers: request.headers});
   });
   const engineCheckArg = process.argv.find(arg => arg.startsWith('--check-engines='));
-  if (!engineCheckArg) return createWindow();
+  if (!engineCheckArg) {
+    try {
+      const saved = await readSession();
+      const result = await pruneReviewCache(path.join(app.getPath('userData'), 'audio-cache'), saved?.tracks || []);
+      if (result.errors) console.warn(`Review cache cleanup skipped ${result.errors} unsafe or unreadable entries`);
+    } catch (error) { console.warn('Review cache cleanup skipped:', error.message); }
+    return createWindow();
+  }
   const resultPath = engineCheckArg.slice('--check-engines='.length);
   try {
     const ffmpeg = await resolveBinary('ffmpeg');

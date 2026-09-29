@@ -15,6 +15,11 @@ await fs.mkdir(destination);
 const ffmpeg = await resolveBinary('ffmpeg');
 await promisify(execFile)(ffmpeg, ['-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=3', '-af', 'apad=pad_dur=15', source]);
 const original = await fs.readFile(source);
+const oldReview = path.join(root, 'state', 'audio-cache', 'audio-orphan');
+await fs.mkdir(oldReview, {recursive: true});
+await fs.writeFile(path.join(oldReview, 'source.mp3'), 'generated orphan fixture');
+const oldTime = (Date.now() - 8 * 24 * 60 * 60 * 1000) / 1000;
+await fs.utimes(oldReview, oldTime, oldTime);
 let application;
 try {
   const executable = process.env.DECKPREP_TEST_EXE;
@@ -26,6 +31,7 @@ try {
     };
   }, {source, destination});
   let page = await application.firstWindow();
+  await assert.rejects(fs.stat(oldReview), {code: 'ENOENT'}, 'startup should remove an old unreferenced review source');
   let maximized = false;
   for (let attempt = 0; attempt < 40; attempt++) {
     maximized = await application.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].isMaximized());

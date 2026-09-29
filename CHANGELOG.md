@@ -7,6 +7,7 @@
 - Keep short SoundCloud preview rejection independent of folder layout; the legacy Sampler Bank folder no longer bypasses that guard.
 - Clarify the existing interface: Prepare selected also covers local audio, Create playlist file explains the optional Rekordbox handoff, All songs together names the flat layout, and support actions move under Help and updates.
 - Make long saved-session validation cancellable, keep the saved queue on cancellation, and prevent imports or exports from overtaking restore. Reserve local import before its file dialog opens.
+- Clean up app-created review audio that is more than seven days old and absent from the saved session. Keep referenced review sources and unfamiliar cache contents.
 - Add a clickable guided/studio interface concept and a detailed redesign backlog informed by user feedback. The prototype is illustrative; screenshot OCR and the new interface are not yet part of the app.
 
 

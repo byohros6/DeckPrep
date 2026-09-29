@@ -5,7 +5,7 @@
 - Baseline: 1.4.0-beta.8 / 4c1d3cc, existing branch codex/deckprep-1-4-upgrade ahead of main. New implementation branch: codex/deckprep-reliability, preserving that work.
 - Untracked `.dajent-analysis/` is unrelated extracted third-party research; do not stage it.
 - Git fetch/push works with sandbox escalation. Draft PR: https://github.com/byohros6/DeckPrep/pull/2 (base is the existing beta PR #1 branch). No merge, tag or release published.
-- Baseline tests passed in planning: 32. Current implementation suite: 45 passed; actual desktop review/restore/trim/crate flow and match-conflict IPC passed at beta.10 with maximize assertion. Hosted Windows source/packaged/portable CI passed for implementation commit 6db86d6; see checkpoint 11.
+- Baseline tests passed in planning: 32. Current implementation suite: 47 passed; actual desktop review/restore/trim/crate flow, cache startup and match-conflict IPC passed at beta.10 with maximize assertion. Hosted Windows source/packaged/portable CI passed for implementation commit 6db86d6; see checkpoint 11. The later cache-cleanup change awaits its own hosted run.
 
 ## Milestone status
 - A reliability: core implementation and regression checks in place; further hardening remains below.
@@ -16,7 +16,7 @@
 
 ## Next steps
 1. Review draft PR #2 against implementation commit 6db86d6 and its passing Windows CI; continue keeping the PR in draft. Do not merge or publish stable.
-2. Restore cancellation, competing input/import/export exclusion, and close-during-restore passed actual IPC checks. Continue with orphaned review-cache maintenance and crash/disk fault injection.
+2. Restore cancellation, competing input/import/export exclusion, close-during-restore, and conservative orphaned review-cache cleanup passed local actual desktop checks. Continue with forced-crash/disk fault injection.
 3. Validate UX_REDESIGN.md with user/DJ feedback, then implement full match comparison/preview, a plain-language stage flow, local OCR, and measured automatic speed in dependency order. The prototype is not production UI.
 4. Finish fault injection, renderer separation, 200 labeled matches, and external beta/accessibility/Rekordbox/signing/redistribution gates in TESTING.md.
 
@@ -92,3 +92,8 @@
 ### Checkpoint 11 — hosted beta 10 build verified
 - Implementation commit 6db86d6 passed a complete Windows CI run: source tests, source and packaged desktop workflow, portable build, generated-audio export from the portable app, and artifact upload. Evidence: https://github.com/byohros6/DeckPrep/actions/runs/36510171638 . A second concurrent run was still finishing at the time of this note; no separate claim is made for it.
 - This evidence applies to 6db86d6. Documentation-only follow-ups do not change runtime code. The beta is still unsigned, and all external acceptance gates above remain open. Next: cache maintenance and crash/disk fault injection, followed by real-session performance profiling and usability validation.
+
+### Checkpoint 12 — stale review audio maintenance
+- Startup reads the saved session before sweeping the private audio cache. The sweep removes only app-created `audio-*` directories at least seven days old, absent from saved `reviewSourcePath` references, and containing only expected `source.*` files. It leaves recent sources, referenced audio and unfamiliar contents untouched. A failed session read skips cleanup, preserving review material.
+- `npm test` passed 47/47, including generated old-orphan, referenced, recent, unfamiliar-content and missing-cache fixtures. Actual Electron E2E passed with an aged generated orphan removed on startup, then completed local review/restore/trim/M3U8 and conflict IPC checks. Source 100/500/1000 queue load+render: 89/179/304ms; search: 14/35/50ms, single runs on the same machine. Packaged/hosted verification for this exact change is pending.
+- Next: commit and push this checkpoint, inspect Windows CI, then test forced crash and disk faults. Do not infer cleanup is comprehensive for manually altered cache directories or externally running instances.

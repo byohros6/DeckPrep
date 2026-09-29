@@ -782,9 +782,13 @@ window.djAPI.onBatchCompleted(summary => {
 
 byId('resumeSessionBtn').addEventListener('click', async () => {
   const button = byId('resumeSessionBtn');
+  const stopButton = byId('cancelRestoreBtn');
   button.disabled = true;
+  stopButton.hidden = false;
+  stopButton.disabled = false;
   try {
     const result = await window.djAPI.restoreSession();
+    if (result.cancelled) { appendLog('Restore stopped. Your saved queue is still available.', 'sys-msg'); return; }
     if (!result.success) throw new Error(result.error);
     const session = result.session;
     inputSource.value = session.input || '';
@@ -817,8 +821,16 @@ byId('resumeSessionBtn').addEventListener('click', async () => {
     appendLog(`Restored ${loadedTracks.length} tracks${session.reusedMatches ? `; ${session.reusedMatches} existing candidates matched automatically` : ''}. Review before downloading.`, 'sys-msg');
   } catch (err) {
     appendLog(`Could not restore session: ${err.message}`, 'err-msg');
-    button.disabled = false;
+  } finally {
+    stopButton.hidden = true;
+    stopButton.disabled = false;
+    if (sessionPromptOpen) button.disabled = false;
   }
+});
+byId('cancelRestoreBtn').addEventListener('click', async () => {
+  const button = byId('cancelRestoreBtn');
+  button.disabled = true;
+  await window.djAPI.cancelRestore();
 });
 byId('discardSessionBtn').addEventListener('click', async () => {
   try {

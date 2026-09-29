@@ -13,7 +13,7 @@ DeckPrep is a Windows desktop workspace for preparing DJ crates from public musi
 3. For catalog-only imports and tracklists, click **Find matches**. DeckPrep searches YouTube first, then SoundCloud when a track still needs a match. It compares artist, title, version, and available duration, accepts close matches automatically, and leaves uncertain versions for review.
 4. Choose a destination and click **Prepare selected**. Watch per-track status and review the batch summary. If a source cannot provide exportable audio, DeckPrep searches for another recording and continues with a confident match. Uncertain results wait for you in the track detail view. Other failed rows can be selected for retry.
    Turn on **Open folder when finished** beside the destination if you want File Explorer to appear after a successful batch. It is off by default; **Open folder** remains available at the bottom of the app.
-5. If you close the app before finishing, it asks whether to restore or discard the saved queue when reopened. Restoring does not start downloads.
+5. If you close the app before finishing, it asks whether to restore or discard the saved queue when reopened. Restoring does not start downloads. You can stop a long restore and retry later; the saved queue remains available.
 
 ![Choosing an uncertain match](docs/images/match-review.png)
 

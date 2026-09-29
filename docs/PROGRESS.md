@@ -16,8 +16,8 @@
 
 ## Next steps
 1. Check Windows CI for the beta.10 commit on draft PR #2. Do not merge or publish stable.
-2. Address restore-validation cancellation and prevent overlapping restore/import/export operations; add actual IPC regression coverage before orphaned review-cache maintenance.
-3. Validate UX_REDESIGN.md with user/DJ feedback, then implement full-title matching UI, plain-language workflow, local OCR, and measured automatic speed in dependency order. The prototype is not production UI.
+2. Restore cancellation and competing input/import/export exclusion are implemented and passed actual IPC checks. Continue with orphaned review-cache maintenance and close/crash fault injection.
+3. Validate UX_REDESIGN.md with user/DJ feedback, then implement full match comparison/preview, a plain-language stage flow, local OCR, and measured automatic speed in dependency order. The prototype is not production UI.
 4. Finish fault injection, renderer separation, 200 labeled matches, and external beta/accessibility/Rekordbox/signing/redistribution gates in TESTING.md.
 
 ## External acceptance evidence (must not fabricate)
@@ -83,4 +83,9 @@
 - Actual Electron desktop E2E passed again, including label and collapsed-Help assertions; generated local audio was processed, reviewed, restored, trimmed and exported, and the incompatible saved match stayed blocked. Synthetic 100/500/1000-row load+render was 85/202/311ms, search 18/36/49ms, single runs.
 - `npm run test:scale` separately measured synthetic matching 6/12/19ms and save+restore 7/6/7ms at 100/500/1000 on the named development machine; this does not measure live provider throughput. Automatic worker tuning remains unimplemented.
 - Next: commit/push the interface clarity checkpoint; verify hosted CI for the latest head. Restore cancellation/operation exclusion and the full redesign remain open.
+
+### Checkpoint 10 — cancellable restore and operation exclusion
+- `restore-session` now reserves the operation before reading disk, propagates abort to finished-output MP3 decode checks, and commits restored tracks only after all checks finish. `cancel-restore` keeps the saved queue; the dialog offers **Stop restoring**. Main shutdown also aborts and waits for restore. Local import reserves its operation before opening the file dialog.
+- Actual Electron E2E passed a 31-track saved-session fixture (30 generated verified outputs plus a conflicting candidate): while restore was active, link import, local import and crate export were all refused; Stop restored the dialog and retry completed; the wrong-version candidate remained blocked. Full local audio/trim/M3U8 workflow still passed. `npm test` 45/45 passed. No external music was used.
+- This verifies the active-session flow, not every crash/fault scenario. Close during restore, disk failure and large real-user sessions remain to test. Next: push this checkpoint, inspect latest Windows CI, then cache maintenance/performance profiling.
 - Next: commit/push beta.10 design checkpoint and inspect hosted CI. Continue original reliability hardening and performance profiling before full UI implementation.

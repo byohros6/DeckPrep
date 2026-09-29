@@ -91,12 +91,24 @@ try {
   const wrong = {url: wrongUrl, title: 'Kerri Chandler feat. Troy Denari - The Way It Goes (Original Mix, Long Club Version)', artist: 'Kerri Chandler', durationSec: 488, provider: 'YouTube'};
   const candidates = rankCandidates(requested, [wrong]).candidates;
   assert.equal(candidates[0].evidence.versionCompatible, false);
-  await fs.writeFile(path.join(root, 'state', 'session.json'), JSON.stringify({version: 2, source: 'spotify', collection: {title: 'Version review'}, tracks: [{...requested, candidates, matchUrl: wrongUrl, matchState: 'chosen'}]}));
+  const exportedAudio = path.join(destination, files.find(file => file.endsWith('.mp3')));
+  const completed = Array.from({length: 30}, (_, index) => ({id: `verified-${index}`, artist: 'Generated', title: `Verified ${index}`, selected: false, status: 'done', outputPath: exportedAudio}));
+  await fs.writeFile(path.join(root, 'state', 'session.json'), JSON.stringify({version: 2, source: 'spotify', collection: {title: 'Version review'}, tracks: [{...requested, candidates, matchUrl: wrongUrl, matchState: 'chosen'}, ...completed]}));
   application = await electron.launch({...(executable ? {executablePath: executable} : {}), args: [...(executable ? [] : ['.']), '--test-user-data=' + path.join(root, 'state')], timeout: 30000});
   page = await application.firstWindow();
   page.on('pageerror', error => errors.push(error.message));
   await page.locator('#resumeSessionBtn').click();
-  await page.locator('tr[data-index]').click();
+  const competingImport = await page.evaluate(() => window.djAPI.parseInput('Artist - Competing track'));
+  assert.equal(competingImport.success, false, 'import should wait for restore validation');
+  const competingLocal = await page.evaluate(() => window.djAPI.importLocal(false));
+  assert.equal(competingLocal.success, false, 'local import should wait for restore validation');
+  const competingExport = await page.evaluate(() => window.djAPI.exportCrate([1]));
+  assert.equal(competingExport.success, false, 'crate export should wait for restore validation');
+  await page.locator('#cancelRestoreBtn').click();
+  await page.waitForFunction(() => !document.getElementById('resumeSessionBtn').disabled);
+  assert.equal(await page.locator('#restoreDialog').isVisible(), true, 'cancelled restore keeps the saved queue available');
+  await page.locator('#resumeSessionBtn').click();
+  await page.locator('tr[data-index]').first().click();
   const conflictingChoice = page.locator('.candidate').first();
   assert.match(await conflictingChoice.innerText(), /Original Mix, Long Club Version/);
   assert.equal(await conflictingChoice.isDisabled(), true);
@@ -111,7 +123,7 @@ try {
   await page.screenshot({path: 'dist/qa-match-review-beta10.png'});
   assert.deepEqual(errors, []);
   console.log('Synthetic desktop queue timings:', JSON.stringify(scale));
-  console.log('PASS Electron: local import -> inspection -> preview -> restore -> approved trim -> verified M3U8, originals preserved; incompatible saved match blocked in real IPC and full title visible; sandbox enabled, no renderer errors');
+  console.log('PASS Electron: local import -> inspection -> preview -> restore -> approved trim -> verified M3U8, originals preserved; restore cancellation/operation exclusion and incompatible match rejection verified in real IPC; sandbox enabled, no renderer errors');
 } finally {
   await application?.close();
   await fs.rm(root, {recursive: true, force: true});

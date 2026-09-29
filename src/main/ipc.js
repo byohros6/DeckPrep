@@ -21,11 +21,12 @@ let parsedTracks = [];
 let activeMetadata = null;
 let activeMatching = null;
 let activeParse = null;
+let activeRestore = null;
 let sessionContext = {};
 let exportController = null;
 let progressSaveTimer;
 const rendererUrl = pathToFileURL(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../renderer/index.html')).href;
-const busy = () => activeQueue || activeMetadata || activeMatching || activeParse || exportController;
+const busy = () => activeQueue || activeMetadata || activeMatching || activeParse || activeRestore || exportController;
 function persist() { return parsedTracks.length ? saveSession({...sessionContext, tracks: parsedTracks, destinationDir: selectedDestination || ''}) : Promise.resolve(); }
 function installTracks(result) {
   if (!result.tracks.length) throw new Error(result.warning || 'No tracks could be imported');
@@ -37,7 +38,9 @@ function installTracks(result) {
 export async function shutdownJobs() {
   clearTimeout(progressSaveTimer);
   activeParse?.abort(); activeMetadata?.controller.abort(); activeMatching?.controller.abort(); exportController?.abort();
+  const restore = activeRestore; restore?.controller.abort();
   const queue = activeQueue; queue?.cancel();
+  if (restore?.completion) await restore.completion.catch(() => {});
   if (queue) await queue.completion;
   await persist(); await flushSession();
 }
@@ -97,42 +100,58 @@ export function registerIpcHandlers(mainWindow) {
   });
   handle('clear-session', async () => { if (busy()) throw new Error('Stop the current task first'); parsedTracks = []; sessionContext = {}; selectedDestination = null; await clearSession(); });
   handle('restore-session', async () => {
-    if (activeQueue || activeMetadata || activeMatching || activeParse) return { success: false, error: 'Wait for the current task first' };
-    const session = await readSession();
-    if (!session) return { success: false, error: 'No saved session' };
-    let reusedMatches = 0;
-    const restoredTracks = [];
-    for (const [index, track] of session.tracks.entries()) {
-      const restored = { ...track, index: index + 1 };
-      if (session.source === 'soundcloud' && restored.album === session.collection?.title) restored.album = '';
-      if (['done', 'skipped'].includes(restored.status)) {
-        try { if (!restored.outputPath) throw new Error('No output'); await verifyMp3File(restored.outputPath); }
-        catch { restored.status = 'pending'; restored.outputPath = null; }
-      }
-      if (['resolving', 'searching', 'downloading', 'transcoding', 'tagging', 'inspecting'].includes(restored.status)) restored.status = 'pending';
-      const savedChoice = restored.candidates?.find(candidate => candidate.url === restored.matchUrl);
-      if (savedChoice && !candidateVersionCompatible(restored, savedChoice)) {
-        restored.matchUrl = null;
-        restored.matchState = 'review';
-        restored.matchError = 'The saved recording conflicts with the requested version; choose a compatible result.';
-      }
-      if (!restored.directUrl && !restored.matchUrl && restored.candidates?.length) {
-        const ranked = rankCandidates(restored, restored.candidates);
-        restored.candidates = ranked.candidates;
-        if (ranked.chosen) {
-          restored.matchUrl = ranked.chosen.url;
-          restored.matchState = 'matched';
-          restored.matchError = null;
-          reusedMatches++;
+    if (busy()) return { success: false, error: 'Wait for the current task first' };
+    const restore = {controller: new AbortController(), completion: null};
+    activeRestore = restore;
+    const signal = restore.controller.signal;
+    restore.completion = (async () => {
+      const session = await readSession();
+      signal.throwIfAborted();
+      if (!session) return { success: false, error: 'No saved session' };
+      let reusedMatches = 0;
+      const restoredTracks = [];
+      for (const [index, track] of session.tracks.entries()) {
+        signal.throwIfAborted();
+        const restored = { ...track, index: index + 1 };
+        if (session.source === 'soundcloud' && restored.album === session.collection?.title) restored.album = '';
+        if (['done', 'skipped'].includes(restored.status)) {
+          try { if (!restored.outputPath) throw new Error('No output'); await verifyMp3File(restored.outputPath, {signal}); }
+          catch { signal.throwIfAborted(); restored.status = 'pending'; restored.outputPath = null; }
         }
+        if (['resolving', 'searching', 'downloading', 'transcoding', 'tagging', 'inspecting'].includes(restored.status)) restored.status = 'pending';
+        const savedChoice = restored.candidates?.find(candidate => candidate.url === restored.matchUrl);
+        if (savedChoice && !candidateVersionCompatible(restored, savedChoice)) {
+          restored.matchUrl = null;
+          restored.matchState = 'review';
+          restored.matchError = 'The saved recording conflicts with the requested version; choose a compatible result.';
+        }
+        if (!restored.directUrl && !restored.matchUrl && restored.candidates?.length) {
+          const ranked = rankCandidates(restored, restored.candidates);
+          restored.candidates = ranked.candidates;
+          if (ranked.chosen) {
+            restored.matchUrl = ranked.chosen.url;
+            restored.matchState = 'matched';
+            restored.matchError = null;
+            reusedMatches++;
+          }
+        }
+        restoredTracks.push(restored);
       }
-      restoredTracks.push(restored);
-    }
-    session.tracks = restoredTracks;
-    sessionContext = {...session}; delete sessionContext.tracks;
-    parsedTracks = session.tracks.map(track => ({ ...track }));
-    selectedDestination = session.destinationDir && fs.existsSync(session.destinationDir) ? session.destinationDir : null;
-    return { success: true, session: { ...session, destinationDir: selectedDestination || '', reusedMatches } };
+      signal.throwIfAborted();
+      session.tracks = restoredTracks;
+      sessionContext = {...session}; delete sessionContext.tracks;
+      parsedTracks = restoredTracks;
+      selectedDestination = session.destinationDir && fs.existsSync(session.destinationDir) ? session.destinationDir : null;
+      return { success: true, session: { ...session, destinationDir: selectedDestination || '', reusedMatches } };
+    })();
+    try { return await restore.completion; }
+    catch (error) { if (signal.aborted) return {success: false, cancelled: true, error: 'Restore stopped; saved session kept'}; throw error; }
+    finally { if (activeRestore === restore) activeRestore = null; }
+  });
+  handle('cancel-restore', () => {
+    if (!activeRestore) return {success: false, error: 'No restore is running'};
+    activeRestore.controller.abort();
+    return {success: true};
   });
   handle('get-system-info', () => {
     const cpuCores = os.cpus()?.length || 4;
@@ -175,7 +194,7 @@ export function registerIpcHandlers(mainWindow) {
     }
   });
   handle('fetch-metadata', (_, selectedIndices) => {
-    if (activeParse || activeQueue || activeMetadata || activeMatching || exportController) return { success: false, error: 'Another task is already running' };
+    if (busy()) return { success: false, error: 'Another task is already running' };
     if (!Array.isArray(selectedIndices) || !selectedIndices.every(Number.isSafeInteger)) return { success: false, error: 'Select valid tracks first' };
     const ids = new Set(selectedIndices);
     if (ids.size !== selectedIndices.length || ids.size > parsedTracks.length) return { success: false, error: 'Track selection is out of date' };
@@ -288,7 +307,7 @@ export function registerIpcHandlers(mainWindow) {
   });
   handle('start-download', async (_, options) => {
     if (activeQueue) return { success: false, error: 'A batch is already running' };
-    if (activeParse || activeMetadata || activeMatching || exportController) return { success: false, error: 'Wait for track review to finish' };
+    if (busy()) return { success: false, error: 'Wait for track review to finish' };
     if (!parsedTracks.length) return { success: false, error: 'Analyze a link or tracklist first' };
     try { validatePreferences(options || {}); } catch (error) { return {success: false, error: error.message}; }
     if (!Array.isArray(options?.selectedIndices) || !options.selectedIndices.length || !options.selectedIndices.every(Number.isSafeInteger)) {
@@ -336,12 +355,17 @@ export function registerIpcHandlers(mainWindow) {
   handle('cancel-import', () => { activeParse?.abort(); return {success: true}; });
   handle('import-local', async (_, folder = false) => {
     if (busy()) return {success: false, error: 'Stop the current task first'};
-    const result = await openDialog({properties: folder ? ['openDirectory'] : ['openFile', 'multiSelections'], filters: [{name: 'Audio', extensions: ['mp3', 'wav', 'flac', 'aiff', 'aif', 'm4a']}]});
-    if (result.canceled) return {success: false, cancelled: true};
-    activeParse = new AbortController();
-    try { const imported = installTracks(await importLocal(result.filePaths, activeParse.signal)); await persist(); return {success: true, ...imported}; }
+    const controller = new AbortController();
+    activeParse = controller;
+    try {
+      const result = await openDialog({properties: folder ? ['openDirectory'] : ['openFile', 'multiSelections'], filters: [{name: 'Audio', extensions: ['mp3', 'wav', 'flac', 'aiff', 'aif', 'm4a']}]});
+      if (result.canceled) return {success: false, cancelled: true};
+      controller.signal.throwIfAborted();
+      const imported = installTracks(await importLocal(result.filePaths, controller.signal));
+      await persist(); return {success: true, ...imported};
+    }
     catch (error) { return {success: false, error: error.message}; }
-    finally { activeParse = null; }
+    finally { if (activeParse === controller) activeParse = null; }
   });
   handle('review-audio', async (_, id, decision) => {
     if (busy()) return {success: false, error: 'Wait for the current task first'};

@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('djAPI', {
   getSavedSession: () => ipcRenderer.invoke('get-saved-session'),
   saveSession: session => ipcRenderer.invoke('save-session', session),
   restoreSession: () => ipcRenderer.invoke('restore-session'),
+  cancelRestore: () => ipcRenderer.invoke('cancel-restore'),
   clearSession: () => ipcRenderer.invoke('clear-session'),
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   openFolder: (dirPath) => ipcRenderer.invoke('open-folder', dirPath),

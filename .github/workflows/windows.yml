@@ -22,7 +22,7 @@ jobs:
       - run: npm run test:scale
       - run: npm run build:icon
       - run: npm run dist:portable
-      - name: Test packaged desktop review and crate workflow
+      - name: Test packaged desktop downloader and review workflow
         shell: pwsh
         run: |
           $env:DECKPREP_TEST_EXE = (Resolve-Path 'dist/win-unpacked/DeckPrep.exe').Path
@@ -47,5 +47,5 @@ jobs:
           path: |
             dist/DeckPrep-Portable-*.exe
             dist/SHA256SUMS.txt
-            dist/qa-*-beta10.png
+            dist/qa-*-beta11.png
           if-no-files-found: error

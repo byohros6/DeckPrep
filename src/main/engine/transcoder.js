@@ -38,7 +38,7 @@ export async function transcodeToMp3(inputPath, outputPath, options = {}) {
   const ffmpegPath = await resolveBinary('ffmpeg');
   if (!ffmpegPath) throw new Error('FFmpeg binary is required for audio transcoding');
 
-  const sampleRate = options.sampleRate || 44100; // 44.1 kHz (CDJ / Rekordbox standard)
+  const sampleRate = options.sampleRate || 44100; // Common MP3 playback sample rate.
   const bitrate = options.bitrate || '320k';      // Pristine 320 kbps CBR
 
   // Ensure output directory exists

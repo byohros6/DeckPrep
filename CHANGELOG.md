@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0-beta.11 (downloader scope)
+
+- Focus the app on downloading from public links and pasted tracklists. Remove Add audio files, Add folder, and Create playlist file from the desktop interface and preload/main IPC paths.
+- Rename the primary action Download selected and remove local-file and Rekordbox options from the interactive design concept.
+- Keep existing saved sessions and downloaded files intact; legacy local tracks remain processable from an older saved session, but no new local files can be imported.
+- Replace desktop acceptance with a generated recording served by a local test source, covering download, audio-ending review, restore, approved trim, verified MP3, and absence of the retired controls.
+- Retire the former Rekordbox acceptance gate and update the master plan, roadmap, testing and portfolio scope explicitly.
+
 ## 1.4.0-beta.10 (design checkpoint)
 
 - Open the Windows app maximized and verify that behavior in the desktop workflow.

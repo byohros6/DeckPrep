@@ -4,8 +4,6 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { validateSender, validSelection, validatePreferences } from './security.js';
-import { importLocal } from './engine/localImport.js';
-import { exportCrate } from './engine/crateExport.js';
 import fs from 'node:fs';
 import { checkBinaries, engineVersions } from './engine/binaryManager.js';
 import { parseInput, fetchTrackDetails } from './engine/sources.js';
@@ -23,10 +21,9 @@ let activeMatching = null;
 let activeParse = null;
 let activeRestore = null;
 let sessionContext = {};
-let exportController = null;
 let progressSaveTimer;
 const rendererUrl = pathToFileURL(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../renderer/index.html')).href;
-const busy = () => activeQueue || activeMetadata || activeMatching || activeParse || activeRestore || exportController;
+const busy = () => activeQueue || activeMetadata || activeMatching || activeParse || activeRestore;
 function persist() { return parsedTracks.length ? saveSession({...sessionContext, tracks: parsedTracks, destinationDir: selectedDestination || ''}) : Promise.resolve(); }
 function installTracks(result) {
   if (!result.tracks.length) throw new Error(result.warning || 'No tracks could be imported');
@@ -37,7 +34,7 @@ function installTracks(result) {
 }
 export async function shutdownJobs() {
   clearTimeout(progressSaveTimer);
-  activeParse?.abort(); activeMetadata?.controller.abort(); activeMatching?.controller.abort(); exportController?.abort();
+  activeParse?.abort(); activeMetadata?.controller.abort(); activeMatching?.controller.abort();
   const restore = activeRestore; restore?.controller.abort();
   const queue = activeQueue; queue?.cancel();
   if (restore?.completion) await restore.completion.catch(() => {});
@@ -353,20 +350,6 @@ export function registerIpcHandlers(mainWindow) {
     return { success: true };
   });
   handle('cancel-import', () => { activeParse?.abort(); return {success: true}; });
-  handle('import-local', async (_, folder = false) => {
-    if (busy()) return {success: false, error: 'Stop the current task first'};
-    const controller = new AbortController();
-    activeParse = controller;
-    try {
-      const result = await openDialog({properties: folder ? ['openDirectory'] : ['openFile', 'multiSelections'], filters: [{name: 'Audio', extensions: ['mp3', 'wav', 'flac', 'aiff', 'aif', 'm4a']}]});
-      if (result.canceled) return {success: false, cancelled: true};
-      controller.signal.throwIfAborted();
-      const imported = installTracks(await importLocal(result.filePaths, controller.signal));
-      await persist(); return {success: true, ...imported};
-    }
-    catch (error) { return {success: false, error: error.message}; }
-    finally { if (activeParse === controller) activeParse = null; }
-  });
   handle('review-audio', async (_, id, decision) => {
     if (busy()) return {success: false, error: 'Wait for the current task first'};
     const track = parsedTracks.find(item => item.id === id);
@@ -376,15 +359,6 @@ export function registerIpcHandlers(mainWindow) {
     track.trimDecision = {action: decision.action, endSec: decision.action === 'trim' ? decision.endSec : null, sourceSha256: track.inspection.sourceSha256, approvedAt: new Date().toISOString(), analysisVersion: track.inspection.version};
     track.status = 'pending'; await persist(); return {success: true, track};
   });
-  handle('export-crate', async (_, indices) => {
-    if (busy()) return {success: false, error: 'Wait for the current task first'};
-    if (!selectedDestination) return {success: false, error: 'Choose a destination'};
-    exportController = new AbortController();
-    try { return {success: true, ...await exportCrate(validSelection(indices, parsedTracks), selectedDestination, sessionContext.collection?.title, exportController.signal)}; }
-    catch (error) { return {success: false, error: error.message}; }
-    finally { exportController = null; }
-  });
-  handle('cancel-export', () => {exportController?.abort(); return {success: true};});
   handle('export-diagnostics', async () => {
     const result = await dialog.showSaveDialog(owner(), {defaultPath: 'DeckPrep-diagnostics.json', filters: [{name: 'JSON', extensions: ['json']}]});
     if (result.canceled) return {success: false, cancelled: true};

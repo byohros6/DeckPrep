@@ -1,8 +1,8 @@
 # DeckPrep
 
-DeckPrep is a Windows desktop workspace for preparing DJ crates from public music links, pasted tracklists, and owned audio files. Load a playlist, review the tracks and audio matches, choose what to export, and follow each file through to a tagged MP3. The queue can be restored after an interrupted session.
+DeckPrep is a Windows desktop downloader for public music links and pasted tracklists. Load tracks, check uncertain recording matches and suspicious audio endings, then download verified MP3s to a folder you choose. The queue can be restored after an interrupted session.
 
-**Current source version:** 1.4.0-beta.10 · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Master plan](docs/MASTER_PLAN.md) · [Progress](docs/PROGRESS.md) · [Interactive redesign concept](prototypes/deckprep-concept.html) (sample data, not the app)
+**Current source version:** 1.4.0-beta.11 · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Master plan](docs/MASTER_PLAN.md) · [Progress](docs/PROGRESS.md) · [Interactive redesign concept](prototypes/deckprep-concept.html) (sample data, not the app)
 
 ![Playlist review in DeckPrep](docs/images/playlist-review.png)
 
@@ -11,21 +11,19 @@ DeckPrep is a Windows desktop workspace for preparing DJ crates from public musi
 1. Paste a public track, album, or playlist link, several links on separate lines, or an artist–title tracklist. Click **Load tracks**.
 2. Search and filter the queue, inspect a track, and uncheck anything you do not want. Shift-click a row checkbox to select or clear the range from the last checkbox; Ctrl-click a row to toggle it. The checkbox at the top selects or clears all **shown** rows, and **Clear selection** clears the whole queue. Repeated artist/title/version entries are marked as possible duplicates, with later copies unchecked by default. SoundCloud playlists fill in track titles and artists before audio downloads start.
 3. For catalog-only imports and tracklists, click **Find matches**. DeckPrep searches YouTube first, then SoundCloud when a track still needs a match. It compares artist, title, version, and available duration, accepts close matches automatically, and leaves uncertain versions for review.
-4. Choose a destination and click **Prepare selected**. Watch per-track status and review the batch summary. If a source cannot provide exportable audio, DeckPrep searches for another recording and continues with a confident match. Uncertain results wait for you in the track detail view. Other failed rows can be selected for retry.
+4. Choose a destination and click **Download selected**. Watch per-track status and review the batch summary. If a source cannot provide exportable audio, DeckPrep searches for another recording and continues with a confident match. Uncertain results wait for you in the track detail view. Other failed rows can be selected for retry.
    Turn on **Open folder when finished** beside the destination if you want File Explorer to appear after a successful batch. It is off by default; **Open folder** remains available at the bottom of the app.
 5. If you close the app before finishing, it asks whether to restore or discard the saved queue when reopened. Restoring does not start downloads. You can stop a long restore and retry later; the saved queue remains available.
 
 ![Choosing an uncertain match](docs/images/match-review.png)
 
-## Audio review and local crates
+## Audio review
 
-Use **Add audio files** or **Add folder** for MP3, WAV, FLAC, AIFF, or M4A. Embedded tags are read on import; filenames are used when tags are missing. The actual codec and full audio are checked during preparation. Original files stay untouched. Compatible local MP3s are copied without re-encoding unless you approve a trim.
+When a long quiet tail is detected, the track shows **Review ending**. Open its details, listen with the waveform/player, and choose **Keep full recording** or **Approve trimmed export**. Adjust the endpoint in seconds if needed. Then choose **Download selected** to finish the approved file. Other tracks can finish while one waits for review. The detection is a review aid, not proof of where music artistically ends.
 
-When a long quiet tail is detected, the track shows **Review ending**. Open its details, listen with the waveform/player, and choose **Keep full recording** or **Approve trimmed export**. Adjust the endpoint in seconds if needed. Then choose **Prepare selected** to finish the approved export. This button also prepares local files. Other tracks can finish while one waits for review. The detection is a review aid, not proof of where music artistically ends.
+DeckPrep no longer offers local-file import or playlist-file export. Existing downloaded files remain where they are, and saved sessions remain readable. The app is focused on downloading from links and tracklists.
 
-Use **Create playlist file** to generate an ordered relative-path M3U8 and report beside verified files. In Rekordbox use File → Import → Import Playlist. This is optional; your prepared MP3s are available without it. Actual Rekordbox-version and hardware acceptance remain pending; DeckPrep does not modify Rekordbox databases or write device databases.
-
-This development beta is not a stable release. [Testing and remaining acceptance gates](docs/TESTING.md) include multi-machine use, representative matching accuracy, actual Rekordbox import, accessibility checks, signing, and exact binary redistribution review. Public provider availability can change. Inspection supports recordings up to two hours; network/process stages have bounded timeouts. Diagnostics are explicit and omit music titles, source URLs and local paths by default. No telemetry or music uploads are added.
+This development beta is not a stable release. [Testing and remaining acceptance gates](docs/TESTING.md) include multi-machine use, representative matching accuracy, accessibility checks, signing, and exact binary redistribution review. Public provider availability can change. Inspection supports recordings up to two hours; network/process stages have bounded timeouts. Diagnostics are explicit and omit music titles, source URLs and local paths by default. No telemetry or music uploads are added.
 
 ## Public link support
 

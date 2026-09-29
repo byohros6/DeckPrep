@@ -1,29 +1,29 @@
 # Implementation progress / next-agent handoff
 
 ## Current checkpoint — 2026-09-28
-- Approved master scope saved in MASTER_PLAN.md. All scope remains tracked; never equate a passing unit suite with release acceptance.
+- Master scope and the owner's later downloader-only revision are saved in MASTER_PLAN.md. Retired requirements remain visible as history; never equate a passing unit suite with release acceptance.
 - Baseline: 1.4.0-beta.8 / 4c1d3cc, existing branch codex/deckprep-1-4-upgrade ahead of main. New implementation branch: codex/deckprep-reliability, preserving that work.
 - Untracked `.dajent-analysis/` is unrelated extracted third-party research; do not stage it.
 - Git fetch/push works with sandbox escalation. Draft PR: https://github.com/byohros6/DeckPrep/pull/2 (base is the existing beta PR #1 branch). No merge, tag or release published.
-- Baseline tests passed in planning: 32. Current implementation suite: 47 passed; actual desktop review/restore/trim/crate flow, cache startup and match-conflict IPC passed at beta.10 with maximize assertion. Hosted Windows source/packaged/portable CI passed for the latest implementation commit 822f907; see checkpoint 12.
+- Baseline tests passed in planning: 32. Current beta 11 suite: 47 passed. Source and locally packaged desktop generated-link download/review/restore/trim, cache startup and match-conflict IPC passed with maximize assertion. Local portable generated-audio export passed; hosted beta 11 CI is pending. Hosted beta 10 evidence remains in checkpoint 12.
 
 ## Milestone status
 - A reliability: core implementation and regression checks in place; further hardening remains below.
 - B audio review/UI: generated-audio flow implemented and tested; actual assistive-technology/high-DPI acceptance pending.
-- C local audio/Rekordbox playlist: implemented and tested structurally; actual Rekordbox acceptance pending.
-- D release tooling/docs: CI/diagnostics/notices/docs added; packaged desktop and portable export passed locally, draft PR opened. External user/machine/Rekordbox gates NOT passed.
+- C local audio/Rekordbox playlist: retired by owner direction after beta 10. Entry points removed in beta 11; legacy saved local tracks remain readable/processable.
+- D release tooling/docs: CI/diagnostics/notices/docs added; beta 11 packaged desktop and portable export passed locally, draft PR opened. Hosted beta 11 and external user/machine gates remain open.
 - E commercial validation: deferred until repeat-use evidence and license/provider review.
 
 ## Next steps
-1. Review draft PR #2 against latest implementation commit 822f907 and its passing Windows CI; continue keeping the PR in draft. Do not merge or publish stable.
+1. Push beta 11 and inspect hosted Windows source/packaged/portable checks, then update draft PR #2 for the downloader-only scope. Keep it in draft; do not merge or publish stable.
 2. Restore cancellation, competing input/import/export exclusion, close-during-restore, and conservative orphaned review-cache cleanup passed local actual desktop checks. Continue with forced-crash/disk fault injection.
 3. Validate UX_REDESIGN.md with user/DJ feedback, then implement full match comparison/preview, a plain-language stage flow, local OCR, and measured automatic speed in dependency order. The prototype is not production UI.
-4. Finish fault injection, renderer separation, 200 labeled matches, and external beta/accessibility/Rekordbox/signing/redistribution gates in TESTING.md.
+4. Finish fault injection, renderer separation, 200 labeled matches, and external beta/accessibility/signing/redistribution gates in TESTING.md. Rekordbox is no longer a release gate.
 
 ## External acceptance evidence (must not fabricate)
 - Three independent Windows machines: not run.
 - Twenty beta sessions over two weeks: not run.
-- Actual Rekordbox import/device workflow: not run.
+- Actual downloaded MP3 open/playback across independent Windows machines: not run. Rekordbox import is retired from scope.
 - Representative 200-case labeled matching corpus/99% precision: not established.
 - Signing credential, commercial rights/license audit: not established.
 
@@ -98,3 +98,11 @@
 - `npm test` passed 47/47, including generated old-orphan, referenced, recent, unfamiliar-content and missing-cache fixtures. Actual Electron E2E passed with an aged generated orphan removed on startup, then completed local review/restore/trim/M3U8 and conflict IPC checks. Source 100/500/1000 queue load+render: 89/179/304ms; search: 14/35/50ms, single runs on the same machine.
 - Implementation commit 822f907 passed both hosted Windows runs, including source/packaged desktop workflows, portable generated-audio export and artifact upload: https://github.com/byohros6/DeckPrep/actions/runs/36511035959 and https://github.com/byohros6/DeckPrep/actions/runs/36511030343 .
 - Next: forced-crash and disk-fault tests, then measured live-session performance. Do not infer cleanup is comprehensive for manually altered cache directories or externally running instances.
+
+### Checkpoint 13 — owner narrowed scope to downloader (beta 11 source)
+- Direct user direction superseded the earlier local-file and Rekordbox goals: DeckPrep is to be a downloader. Removed Add audio files/Add folder and Create playlist file from the app, preload and main IPC; removed the unused M3U8 engine module. The primary action now says **Download selected**. Existing downloaded files are untouched, and a legacy saved local track still has its engine path so earlier unfinished sessions are not stranded.
+- Updated the clickable concept to Add links → Review matches → Download files, with no local-file or Rekordbox controls. Browser interaction check passed guided match decisions, demo download, narrow layout without horizontal overflow, and no page errors. This remains a sample-data concept, not the production redesign.
+- `npm test` passed 47/47. Actual source Electron E2E passed using generated WAV served from a local test HTTP source: download → quiet-tail review → close/restore → approved trim → verified MP3. It also asserted retired UI/preload entry points were absent, old generated cache cleanup, restore operation exclusion, maximized startup, and wrong-version IPC rejection. The local server source bytes stayed unchanged. Final source 100/500/1000 row load+render: 102/185/294ms; search 20/31/46ms, single runs.
+- Local beta 11 portable build completed. Actual `dist/win-unpacked/DeckPrep.exe` passed the same E2E; packaged 100/500/1000 row load+render: 97/171/283ms; search 22/34/44ms. Portable `--check-engines` generated-audio export returned `success=true`, `export=true`. Local SHA-256 of `DeckPrep-Portable-1.4.0-beta.11.exe`: `2160CF1C05782B35BB5AA88F9F106C3E3B69CFE03A90F5902210516C221D25C1`. Authenticode is NotSigned; builder's signing log does not establish a signature.
+- First portable check invocation failed before writing its result because the result path contained a space and was split by `Start-Process` argument handling. Re-running with a space-free temporary result path passed. This was a test invocation issue; no app change was made for it. CI uses its runner temp path.
+- Package and lockfile are both 1.4.0-beta.11. No tag, merge or release. Next: commit/push and verify hosted Windows CI for the exact beta 11 commit, then update draft PR #2. Historical beta 9/10 Rekordbox/local checks above are not active acceptance gates.

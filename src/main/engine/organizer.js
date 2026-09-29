@@ -2,7 +2,7 @@ import path from 'path';
 import { sanitizeFileName } from './transcoder.js';
 
 /**
- * Computes destination file paths according to DJ crate organization modes
+ * Computes destination file paths according to the selected folder layout.
  */
 export function buildDestinationPath({
   baseDir,

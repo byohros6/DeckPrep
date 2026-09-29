@@ -2,7 +2,7 @@
 
 The complete approved scope is in [MASTER_PLAN](docs/MASTER_PLAN.md). Current implementation evidence and open gates are in [PROGRESS](docs/PROGRESS.md); historical checked items below are not new-release acceptance.
 
-This is the running feature log. The current source checkpoint is **1.4.0-beta.10**. The detailed usability redesign and screenshot OCR plan is in [UX_REDESIGN](docs/UX_REDESIGN.md).
+This is the running feature log. The current source checkpoint is **1.4.0-beta.11**. The detailed downloader redesign and screenshot OCR plan is in [UX_REDESIGN](docs/UX_REDESIGN.md). Local-file import and Rekordbox playlist export were retired by owner direction after beta 10.
 
 ## In the 1.4 upgrade
 
@@ -12,10 +12,11 @@ This is the running feature log. The current source checkpoint is **1.4.0-beta.1
 - [x] Save unfinished queues and ask whether to restore them on launch.
 - [x] Retry failed rows, keep original files, and decode exported MP3s before reporting success.
 - [x] Pass local and hosted packaged Windows, synthetic queue, cancellation, and recovery checks recorded in [QA_REPORT](docs/QA_REPORT.md).
-- [ ] Validate the redesigned match and export flow with users, then implement the accepted interface.
+- [x] Remove local-file import and playlist-export entry points to focus on downloading.
+- [ ] Validate the redesigned match and download flow with users, then implement the accepted interface.
 - [ ] Add local screenshot-to-tracklist extraction with editable review and measured accuracy.
 - [ ] Profile and tune automatic processing/search concurrency across representative workloads.
-- [ ] Complete independent-machine, repeat-session, Rekordbox, accessibility, signing and rights gates.
+- [ ] Complete independent-machine, repeat-session, accessibility, signing and rights gates.
 - [ ] Publish the final 1.4.0 release after beta review.
 
 ## Later candidates
@@ -24,7 +25,7 @@ This is the running feature log. The current source checkpoint is **1.4.0-beta.1
 - More providers, starting with Bandcamp.
 - Additional export formats and quality choices.
 - Duplicate detection across sessions and destination folders.
-- DJ library export formats and optional BPM/key analysis.
+- Optional BPM/key analysis if users ask for it; DJ library export is outside current scope.
 - Optional interoperability with playlist-transfer services if they provide a supported integration. Pasted tracklists already provide a manual bridge.
 
 Ideas stay here until their behavior, constraints, and release priority are decided.

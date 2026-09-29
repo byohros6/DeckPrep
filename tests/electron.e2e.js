@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import http from 'node:http';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { resolveBinary } from '../src/main/engine/binaryManager.js';
@@ -15,6 +16,19 @@ await fs.mkdir(destination);
 const ffmpeg = await resolveBinary('ffmpeg');
 await promisify(execFile)(ffmpeg, ['-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=3', '-af', 'apad=pad_dur=15', source]);
 const original = await fs.readFile(source);
+let mediaServer;
+mediaServer = http.createServer((_request, response) => {
+  response.writeHead(200, {'content-type': 'audio/wav', 'content-length': original.length});
+  response.end(original);
+});
+await new Promise(resolve => mediaServer.listen(0, '127.0.0.1', resolve));
+const directUrl = `http://127.0.0.1:${mediaServer.address().port}/source.wav`;
+await fs.mkdir(path.join(root, 'state'), {recursive: true});
+await fs.writeFile(path.join(root, 'state', 'session.json'), JSON.stringify({
+  version: 2, source: 'youtube', phase: 'review', collection: {title: 'Generated link'},
+  tracks: [{id: 'generated-link', index: 1, artist: 'Generated', title: 'Test song',
+    directUrl, selected: true, status: 'pending'}]
+}));
 const oldReview = path.join(root, 'state', 'audio-cache', 'audio-orphan');
 await fs.mkdir(oldReview, {recursive: true});
 await fs.writeFile(path.join(oldReview, 'source.mp3'), 'generated orphan fixture');
@@ -40,10 +54,13 @@ try {
   }
   assert.equal(maximized, true, 'the main window should open maximized');
   const errors = []; page.on('pageerror', error => errors.push(error.message));
-  await page.locator('#localFilesBtn').click();
+  assert.equal(await page.locator('#localFilesBtn').count(), 0);
+  assert.equal(await page.locator('#exportCrateBtn').count(), 0);
+  assert.deepEqual(await page.evaluate(() => [typeof window.djAPI.importLocal, typeof window.djAPI.exportCrate]), ['undefined', 'undefined']);
+  await page.locator('#resumeSessionBtn').click();
   await page.waitForFunction(() => document.querySelectorAll('tr[data-index]').length === 1);
   await page.locator('#browseBtn').click();
-  assert.match(await page.locator('#startBtn').innerText(), /Prepare selected/);
+  assert.match(await page.locator('#startBtn').innerText(), /Download selected/);
   assert.equal(await page.locator('.support-menu').evaluate(element => element.open), false);
   await page.locator('#startBtn').click();
   await page.waitForFunction(() => document.querySelector('.status-chip')?.textContent === 'Review ending');
@@ -51,7 +68,7 @@ try {
   await page.locator('tr[data-index]').click();
   await page.waitForFunction(() => document.querySelector('audio')?.duration > 17);
   await fs.mkdir('dist', {recursive: true});
-  await page.screenshot({path: 'dist/qa-audio-review-beta10.png'});
+  await page.screenshot({path: 'dist/qa-audio-review-beta11.png'});
   await application.close();
   application = await electron.launch({...(executable ? {executablePath: executable} : {}), args: [...(executable ? [] : ['.']), '--test-user-data=' + path.join(root, 'state')], timeout: 30000});
   page = await application.firstWindow();
@@ -64,17 +81,15 @@ try {
   await page.getByRole('button', {name: 'Approve trimmed export'}).click();
   await page.locator('#startBtn').click();
   await page.waitForFunction(() => document.querySelector('.status-chip')?.textContent === 'Verified');
-  assert.match(await page.locator('#exportCrateBtn').innerText(), /Create playlist file/);
   await page.waitForFunction(() => document.querySelector('#cancelBtn').disabled);
-  await page.locator('#exportCrateBtn').click();
-  await page.waitForFunction(() => document.querySelector('#summaryBanner').textContent.includes('verified tracks exported'));
   const files = await fs.readdir(destination);
-  assert.ok(files.some(file => file.endsWith('.m3u8')));
+  assert.ok(files.some(file => file.endsWith('.mp3')));
+  assert.ok(!files.some(file => file.endsWith('.m3u8')));
   const manifest = JSON.parse(await fs.readFile(path.join(destination, files.find(file => file.endsWith('.mp3.deckprep.json'))), 'utf8'));
   assert.ok(Math.abs(manifest.verification.durationSec - 5) < 0.1);
   assert.equal(manifest.trimDecision.action, 'trim');
   assert.deepEqual(await fs.readFile(source), original);
-  await page.screenshot({path: 'dist/qa-crate-export-beta10.png'});
+  await page.screenshot({path: 'dist/qa-download-complete-beta11.png'});
   assert.deepEqual(errors, []);
   const security = await application.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences());
   assert.equal(security.sandbox, true); assert.equal(security.contextIsolation, true); assert.equal(security.nodeIntegration, false);
@@ -106,10 +121,8 @@ try {
   await page.locator('#resumeSessionBtn').click();
   const competingImport = await page.evaluate(() => window.djAPI.parseInput('Artist - Competing track'));
   assert.equal(competingImport.success, false, 'import should wait for restore validation');
-  const competingLocal = await page.evaluate(() => window.djAPI.importLocal(false));
-  assert.equal(competingLocal.success, false, 'local import should wait for restore validation');
-  const competingExport = await page.evaluate(() => window.djAPI.exportCrate([1]));
-  assert.equal(competingExport.success, false, 'crate export should wait for restore validation');
+  const competingDownload = await page.evaluate(options => window.djAPI.startDownload(options), {destinationDir: destination, selectedIndices: [1], concurrency: 1, mode: 'flat'});
+  assert.equal(competingDownload.success, false, 'download should wait for restore validation');
   await page.locator('#cancelRestoreBtn').click();
   await page.waitForFunction(() => !document.getElementById('resumeSessionBtn').disabled);
   assert.equal(await page.locator('#restoreDialog').isVisible(), true, 'cancelled restore keeps the saved queue available');
@@ -126,7 +139,7 @@ try {
   const manualChoice = await page.evaluate(url => window.djAPI.chooseMatch(1, url), wrongUrl);
   assert.equal(manualChoice.success, false);
   assert.match(manualChoice.error, /conflicts with the requested version/);
-  await page.screenshot({path: 'dist/qa-match-review-beta10.png'});
+  await page.screenshot({path: 'dist/qa-match-review-beta11.png'});
   const restoreDuringClose = page.evaluate(() => window.djAPI.restoreSession()).catch(() => null);
   const blockedWhileClosing = await page.evaluate(() => window.djAPI.parseInput('Artist - Blocked while restoring'));
   assert.equal(blockedWhileClosing.success, false);
@@ -138,8 +151,9 @@ try {
   assert.equal(JSON.parse(await fs.readFile(path.join(root, 'state', 'session.json'), 'utf8')).tracks.length, 31);
   assert.deepEqual(errors, []);
   console.log('Synthetic desktop queue timings:', JSON.stringify(scale));
-  console.log('PASS Electron: local import -> inspection -> preview -> restore -> approved trim -> verified M3U8, originals preserved; restore cancellation/operation exclusion, close-during-restore and incompatible match rejection verified; sandbox enabled, no renderer errors');
+  console.log('PASS Electron: generated link -> download -> inspection -> preview -> restore -> approved trim -> verified MP3, source preserved; restore cancellation/operation exclusion, close-during-restore and incompatible match rejection verified; sandbox enabled, no renderer errors');
 } finally {
   await application?.close();
+  if (mediaServer) await new Promise(resolve => mediaServer.close(resolve));
   await fs.rm(root, {recursive: true, force: true});
 }

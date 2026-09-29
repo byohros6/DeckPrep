@@ -1,7 +1,7 @@
 {
   "name": "deckprep",
-  "version": "1.4.0-beta.10",
-  "description": "Prepare DJ crates from music links and tracklists",
+  "version": "1.4.0-beta.11",
+  "description": "Download and verify music from public links and tracklists",
   "main": "src/main/main.js",
   "type": "module",
   "scripts": {

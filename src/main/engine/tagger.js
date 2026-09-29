@@ -5,7 +5,7 @@ import { spawn } from 'child_process';
 import { readLocalMetadata } from './localImport.js';
 
 /**
- * Ensures artwork buffer is formatted as baseline JPEG for strict Pioneer CDJ / Rekordbox hardware compatibility
+ * Formats artwork as broadly compatible JPEG before embedding it in the MP3.
  */
 async function ensureJpegBuffer(buffer, signal) {
   if (!buffer || buffer.length < 4) return null;
@@ -50,7 +50,7 @@ async function ensureJpegBuffer(buffer, signal) {
 }
 
 /**
- * Embed ID3v2.3 tags into MP3 files tailored for Pioneer Rekordbox / CDJ compatibility
+ * Embed broadly compatible ID3v2.3 tags in downloaded MP3 files.
  */
 export async function tagMp3File(filePath, metadata, {signal} = {}) {
   const title = versionedTitle(metadata);
@@ -68,7 +68,7 @@ export async function tagMp3File(filePath, metadata, {signal} = {}) {
   };
   if (album) tags.album = album;
 
-  // Embed BPM for Rekordbox / CDJ hardware grid display
+  // Preserve BPM when a source provides it.
   if (metadata.bpm && Number(metadata.bpm) > 0) {
     tags.bpm = String(Math.round(Number(metadata.bpm)));
   }

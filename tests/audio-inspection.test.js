@@ -8,7 +8,6 @@ import { promisify } from 'node:util';
 import { inspectAudio, summarizeAudio } from '../src/main/engine/audioInspection.js';
 import { resolveBinary } from '../src/main/engine/binaryManager.js';
 import { DownloadQueue } from '../src/main/engine/downloadQueue.js';
-import { exportCrate } from '../src/main/engine/crateExport.js';
 const exec = promisify(execFile);
 
 test('long tails are flagged but internal breaks and quiet reverb are not cut', () => {
@@ -37,7 +36,7 @@ test('real decoding rejects fake MP3 and silent audio, and preserves sound in ei
   } finally { await fs.rm(dir, {recursive: true, force: true}); }
 });
 
-test('local source waits for approval then trims verified export without changing the source', async () => {
+test('legacy saved local source waits for approval and preserves its original', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'deckprep-review-test-'));
   try {
     const binary = await resolveBinary('ffmpeg'); const source = path.join(dir, 'source.wav');
@@ -53,10 +52,5 @@ test('local source waits for approval then trims verified export without changin
     assert.ok(Math.abs(track.verification.durationSec - 5) < 0.1);
     assert.deepEqual(await fs.readFile(source), original);
     assert.ok(await fs.stat(track.outputPath + '.deckprep.json'));
-    const result = await exportCrate([track, {id: 'pending', title: 'Pending', status: 'audio_review'}], path.dirname(track.outputPath), 'Test crate');
-    assert.equal(result.included, 1); assert.equal(result.excluded.length, 1);
-    assert.match(await fs.readFile(result.playlist, 'utf8'), /\.\/Song.mp3/);
-    await fs.appendFile(track.outputPath, 'changed');
-    await assert.rejects(exportCrate([track], path.dirname(track.outputPath)), /No verified/);
   } finally { await fs.rm(dir, {recursive: true, force: true}); }
 });

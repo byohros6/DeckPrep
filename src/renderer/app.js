@@ -34,12 +34,11 @@ let logCount = 0;
 let cpuCores = 4;
 let selectionAnchorIndex = null;
 let automaticRecoveryIndices = null;
-let isExporting = false;
 const audioReview = createAudioReview(byId('audioReview'), track => {
   const current = loadedTracks.find(item => item.id === track.id);
   if (current) Object.assign(current, track);
   renderTrackTable(); updateControls(); saveQueueSoon(0);
-  appendLog('Audio choice saved. Choose Prepare selected to finish the approved export.', 'sys-msg');
+  appendLog('Audio choice saved. Choose Download selected to finish the approved file.', 'sys-msg');
 }, message => appendLog(message, 'err-msg'));
 
 function presetConcurrency(mode) {
@@ -347,16 +346,13 @@ function updateControls() {
   startBtn.title = needed.length ? 'Fetch details for selected tracks first' : unresolved.length ? 'Review selected audio matches first' : !destinationDir ? 'Choose a destination folder' : !pending.length ? 'All selected tracks are complete' : '';
   byId('retryFailedBtn').hidden = !loadedTracks.some(track => track.status === 'error' && !track.blockedOriginal) || isDownloading;
   byId('cancelImportBtn').hidden = !isLoadingInput;
-  byId('localFilesBtn').disabled = byId('localFolderBtn').disabled = isDownloading || isFetchingDetails || isFindingMatches || isLoadingInput || isExporting;
-  byId('exportCrateBtn').disabled = isDownloading || isFetchingDetails || isFindingMatches || isLoadingInput || isExporting || !selected.some(track => ['done', 'skipped'].includes(track.status));
-  if (isExporting) startBtn.disabled = analyzeBtn.disabled = true;
   updateMetadataBar();
   updateMatchingBar();
   updateProgress();
 }
 
 function renderDetail(track) {
-  audioReview.render(track, isDownloading || isFindingMatches || isFetchingDetails || isExporting);
+  audioReview.render(track, isDownloading || isFindingMatches || isFetchingDetails);
   byId('detailPanel').hidden = false;
   byId('detailNumber').textContent = `TRACK ${String(track.index).padStart(3, '0')}`;
   byId('detailTitle').textContent = track.title;
@@ -391,7 +387,7 @@ function renderDetail(track) {
       ? `This result conflicts with the requested ${track.mix || 'recording version'}. Open the source or search again.`
       : candidate.reason || 'Compare title, artist, version and duration with the requested track.';
     button.classList.toggle('conflict', incompatible);
-    button.disabled = incompatible || isDownloading || isFindingMatches || isFetchingDetails || isExporting;
+    button.disabled = incompatible || isDownloading || isFindingMatches || isFetchingDetails;
     button.setAttribute('aria-label', `${incompatible ? 'Version conflict: ' : 'Use '}${candidate.title} from ${candidate.provider}. ${reason.textContent}`);
     button.append(title, details, reason);
     button.addEventListener('click', async () => {
@@ -685,7 +681,7 @@ byId('retryFailedBtn').addEventListener('click', () => {
   loadedTracks.forEach(track => { track.selected = failed.includes(track); });
   byId('queueFilter').value = 'selected';
   renderTrackTable(); updateControls(); saveQueueSoon();
-  appendLog(`${failed.length} failed tracks selected for retry. Review them, then choose Prepare selected.`, 'sys-msg');
+  appendLog(`${failed.length} failed tracks selected for retry. Review them, then choose Download selected.`, 'sys-msg');
 });
 
 async function beginDownload(indices) {
@@ -907,36 +903,12 @@ function installResult(result) {
 
 }
 
-async function loadLocal(folder) {
-  isLoadingInput = true; updateControls();
-  try {
-    const result = await window.djAPI.importLocal(folder);
-    if (result.cancelled) return;
-    if (!result.success) throw new Error(result.error);
-    installResult(result); saveQueueSoon(0);
-  } catch (error) { appendLog(error.message, 'err-msg'); }
-  finally { isLoadingInput = false; updateControls(); }
-}
-byId('localFilesBtn').onclick = () => loadLocal(false);
-byId('localFolderBtn').onclick = () => loadLocal(true);
 byId('cancelImportBtn').onclick = () => window.djAPI.cancelImport();
 byId('diagnosticsBtn').onclick = async () => {
   try { const result = await window.djAPI.exportDiagnostics(); if (result.success) appendLog('Redacted diagnostics saved.', 'sys-msg'); }
   catch (error) { appendLog(error.message, 'err-msg'); }
 };
 byId('updatesBtn').onclick = () => window.djAPI.openReleases();
-byId('cancelExportBtn').onclick = () => window.djAPI.cancelExport();
-byId('exportCrateBtn').onclick = async () => {
-  isExporting = true; byId('cancelExportBtn').hidden = false; updateControls();
-  try {
-    const result = await window.djAPI.exportCrate(selectedTracks().map(track => track.index));
-    if (!result.success) throw new Error(result.error);
-    const banner = byId('summaryBanner'); banner.hidden = false;
-    banner.textContent = result.included + ' verified tracks exported to a playlist; ' + result.excluded.length + ' excluded. In Rekordbox choose File → Import → Import Playlist.';
-    appendLog('Crate playlist: ' + result.playlist, 'done-msg');
-  } catch (error) { appendLog(error.message, 'err-msg'); }
-  finally { isExporting = false; analyzeBtn.disabled = false; byId('cancelExportBtn').hidden = true; updateControls(); }
-};
 window.djAPI.onFlushBeforeClose(async () => {
   try { await saveQueueNow(); window.djAPI.acknowledgeFlush(true); }
   catch { window.djAPI.acknowledgeFlush(false); }

@@ -60,6 +60,7 @@ try {
   assert.deepEqual(await page.evaluate(() => [typeof window.djAPI.importLocal, typeof window.djAPI.exportCrate]), ['undefined', 'undefined']);
   await page.locator('#resumeSessionBtn').click();
   await page.waitForFunction(() => document.querySelectorAll('tr[data-index]').length === 1);
+  assert.equal(await page.locator('#folderName').inputValue(), '', 'a new folder is optional');
   await page.locator('#browseBtn').click();
   await page.locator('#folderName').fill('DAIR');
   assert.equal(await page.locator('#startBtn').isDisabled(), true, 'a known partial playlist must not silently download');
@@ -108,6 +109,7 @@ try {
     await page.locator('#inputSource').fill(Array.from({length: count}, (_, i) => `Artist ${i} - Track ${i}`).join('\n'));
     const start = Date.now(); await page.locator('#analyzeBtn').click();
     await page.waitForFunction(expected => document.querySelectorAll('tr[data-index]').length === expected, count);
+    assert.equal(await page.locator('#folderName').inputValue(), '', 'loading another source must not reuse the last folder name');
     const renderMs = Date.now() - start;
     const searchStart = Date.now(); await page.locator('#queueSearch').fill('Track 19');
     await page.waitForFunction(() => document.querySelector('#visibleCount').textContent.includes('shown'));

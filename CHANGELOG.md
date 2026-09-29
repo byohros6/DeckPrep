@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0-beta.13 (folder choice clarification)
+
+- Keep the new subfolder field empty when loading a playlist. A blank name saves directly into the destination the user chose; an entered name creates that subfolder for this download. The app no longer guesses a name from the playlist title.
+- Show the resulting path in the folder-layout preview. DAIR remains only a test example, not an app default.
+
 ## 1.4.0-beta.12 (playlist folder and coverage)
 
 - Let a download go into a named folder such as `DAIR` inside the destination chosen by the user. Validate the folder name, preserve the choice across restarts, and verify the generated-audio desktop export lands in that folder.

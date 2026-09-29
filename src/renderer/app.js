@@ -61,11 +61,13 @@ function updateSpeed(mode = byId('speedMode').value) {
 
 function updateCrateHint() {
   const mode = byId('crateMode').value;
-  byId('crateModePreview').textContent = mode === 'artist' ? 'Your folder\\Artist\\Song Title.mp3'
-    : mode === 'genre' ? 'Your folder\\Genre\\Song Title.mp3'
-      : mode === 'sampler' ? 'Your folder\\DJ Sampler Bank\\Song Title.mp3'
-        : mode === 'partitioned' ? 'Your folder\\Genre or Artist\\Song Title.mp3'
-        : 'Your folder\\Song Title.mp3';
+  const name = byId('folderName').value.trim();
+  const base = name ? `Chosen folder\\${name}` : 'Chosen folder';
+  byId('crateModePreview').textContent = mode === 'artist' ? `${base}\\Artist\\Song Title.mp3`
+    : mode === 'genre' ? `${base}\\Genre\\Song Title.mp3`
+      : mode === 'sampler' ? `${base}\\DJ Sampler Bank\\Song Title.mp3`
+        : mode === 'partitioned' ? `${base}\\Genre or Artist\\Song Title.mp3`
+        : `${base}\\Song Title.mp3`;
   byId('crateModeHint').textContent = mode === 'sampler'
     ? 'Full-length songs in one named folder. No sampler pads or cue points.'
     : mode === 'artist' ? 'Missing artist goes in Unknown Artist.'
@@ -679,7 +681,7 @@ byId('browseBtn').addEventListener('click', async () => {
   } catch (err) { appendLog(`Could not choose destination: ${err.message}`, 'err-msg'); }
 });
 byId('openFolderBtn').addEventListener('click', () => window.djAPI.openFolder(destinationDir));
-byId('folderName').addEventListener('input', () => { updateControls(); saveQueueSoon(); });
+byId('folderName').addEventListener('input', () => { updateCrateHint(); saveQueueSoon(); });
 byId('clearLogBtn').addEventListener('click', () => { logConsole.textContent = ''; logCount = 0; byId('activityCount').textContent = '0'; });
 byId('concurrencyRange').addEventListener('input', () => { byId('speedMode').value = 'custom'; updateSpeed(); saveQueueSoon(); });
 byId('speedMode').addEventListener('change', () => { updateSpeed(); saveQueueSoon(); });
@@ -898,7 +900,8 @@ function installResult(result) {
     markDuplicates(true);
     collectionSource = result.source;
     collectionInfo = { title: result.title, creator: result.creator, artworkUrl: result.artworkUrl, sourceUrl: result.sourceUrl, warning: result.warning, totalCount: result.totalCount, incomplete: result.incomplete };
-    byId('folderName').value = result.title && result.source !== 'links' && result.source !== 'text' ? result.title.slice(0, 80).replace(/[<>:"/\\|?*]/g, '').replace(/[. ]+$/, '') : '';
+    byId('folderName').value = '';
+    updateCrateHint();
     byId('queueSearch').value = '';
     byId('queueFilter').value = 'all';
     activeDetailIndex = null;

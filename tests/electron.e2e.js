@@ -37,6 +37,8 @@ try {
   await page.locator('#localFilesBtn').click();
   await page.waitForFunction(() => document.querySelectorAll('tr[data-index]').length === 1);
   await page.locator('#browseBtn').click();
+  assert.match(await page.locator('#startBtn').innerText(), /Prepare selected/);
+  assert.equal(await page.locator('.support-menu').evaluate(element => element.open), false);
   await page.locator('#startBtn').click();
   await page.waitForFunction(() => document.querySelector('.status-chip')?.textContent === 'Review ending');
   await page.waitForFunction(() => document.querySelector('#cancelBtn').disabled);
@@ -56,6 +58,7 @@ try {
   await page.getByRole('button', {name: 'Approve trimmed export'}).click();
   await page.locator('#startBtn').click();
   await page.waitForFunction(() => document.querySelector('.status-chip')?.textContent === 'Verified');
+  assert.match(await page.locator('#exportCrateBtn').innerText(), /Create playlist file/);
   await page.waitForFunction(() => document.querySelector('#cancelBtn').disabled);
   await page.locator('#exportCrateBtn').click();
   await page.waitForFunction(() => document.querySelector('#summaryBanner').textContent.includes('verified tracks exported'));

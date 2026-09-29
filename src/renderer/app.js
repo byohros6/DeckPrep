@@ -39,7 +39,7 @@ const audioReview = createAudioReview(byId('audioReview'), track => {
   const current = loadedTracks.find(item => item.id === track.id);
   if (current) Object.assign(current, track);
   renderTrackTable(); updateControls(); saveQueueSoon(0);
-  appendLog('Audio choice saved. Choose Download selected to finish the approved export.', 'sys-msg');
+  appendLog('Audio choice saved. Choose Prepare selected to finish the approved export.', 'sys-msg');
 }, message => appendLog(message, 'err-msg'));
 
 function presetConcurrency(mode) {
@@ -685,7 +685,7 @@ byId('retryFailedBtn').addEventListener('click', () => {
   loadedTracks.forEach(track => { track.selected = failed.includes(track); });
   byId('queueFilter').value = 'selected';
   renderTrackTable(); updateControls(); saveQueueSoon();
-  appendLog(`${failed.length} failed tracks selected for retry. Review them, then download selected.`, 'sys-msg');
+  appendLog(`${failed.length} failed tracks selected for retry. Review them, then choose Prepare selected.`, 'sys-msg');
 });
 
 async function beginDownload(indices) {

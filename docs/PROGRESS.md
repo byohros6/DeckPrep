@@ -77,4 +77,10 @@
 - A closer inspection found `mode === 'sampler'` bypassed two short-SoundCloud-preview checks in DownloadQueue. This contradicted the visible folder-only explanation and could count a preview as a prepared song. Removed both exceptions; local intentional short audio remains supported. Updated README and redesign brief with the corrected behavior.
 - Validation: `npm test` 45/45 passed, including a new regression that the same 30-second SoundCloud preview is rejected for both flat and sampler layouts. Latest full desktop E2E was checkpoint 7; it did not exercise this specific SoundCloud guard. Hosted CI for this final engine change still pending.
 - Next: push checkpoint 8, inspect Windows CI, then continue restore/operation exclusion and measure throughput before changing concurrency defaults.
+
+### Checkpoint 9 — plain-language controls
+- The existing beta now says **Prepare selected** for link and local audio, **Create playlist file** for the optional M3U8 handoff, and **All songs together** for the flat folder layout. Diagnostics and release checking remain accessible under a collapsed **Help and updates** section, so beta support capability is preserved.
+- Actual Electron desktop E2E passed again, including label and collapsed-Help assertions; generated local audio was processed, reviewed, restored, trimmed and exported, and the incompatible saved match stayed blocked. Synthetic 100/500/1000-row load+render was 85/202/311ms, search 18/36/49ms, single runs.
+- `npm run test:scale` separately measured synthetic matching 6/12/19ms and save+restore 7/6/7ms at 100/500/1000 on the named development machine; this does not measure live provider throughput. Automatic worker tuning remains unimplemented.
+- Next: commit/push the interface clarity checkpoint; verify hosted CI for the latest head. Restore cancellation/operation exclusion and the full redesign remain open.
 - Next: commit/push beta.10 design checkpoint and inspect hosted CI. Continue original reliability hardening and performance profiling before full UI implementation.

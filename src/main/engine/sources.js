@@ -1,3 +1,4 @@
+import { fetchPublic } from './network.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { resolveBinary } from './binaryManager.js';
@@ -87,6 +88,7 @@ async function soundCloudOembed(url, signal) {
     }
     if (response.ok) {
       const data = await response.json();
+      if (soundCloudMetadataCache.size >= 500) soundCloudMetadataCache.delete(soundCloudMetadataCache.keys().next().value);
       soundCloudMetadataCache.set(url, data);
       return data;
     }
@@ -106,7 +108,7 @@ export async function fetchTrackDetails(track, signal) {
   const binary = await resolveBinary('yt-dlp');
   if (!binary) throw new Error('yt-dlp is missing. Run npm run setup:engine.');
   const { stdout } = await execFileAsync(binary, ['--dump-json', '--no-playlist', '--', track.directUrl], {
-    maxBuffer: 10 * 1024 * 1024, signal
+    maxBuffer: 10 * 1024 * 1024, signal, timeout: 30000, windowsHide: true
   });
   const item = stdout.split(/\r?\n/).filter(Boolean).map(line => {
     try { return JSON.parse(line); } catch { return null; }
@@ -117,10 +119,10 @@ export async function fetchTrackDetails(track, signal) {
   return details;
 }
 
-async function extractWithYtDlp(url, source) {
+async function extractWithYtDlp(url, source, signal) {
   const binary = await resolveBinary('yt-dlp');
   if (!binary) throw new Error('yt-dlp is missing. Run npm run setup:engine.');
-  const { stdout } = await execFileAsync(binary, ['--dump-json', '--flat-playlist', '--', url], { maxBuffer: 40 * 1024 * 1024 });
+  const { stdout } = await execFileAsync(binary, ['--dump-json', '--flat-playlist', '--', url], { maxBuffer: 40 * 1024 * 1024, signal, timeout: 90000, windowsHide: true });
   const items = stdout.split(/\r?\n/).filter(Boolean).flatMap(line => {
     try {
       return [JSON.parse(line)];
@@ -146,7 +148,7 @@ async function extractWithYtDlp(url, source) {
   if (source === 'soundcloud' && items[0]?.playlist_id) {
     const playlistUrl = items[0].playlist_webpage_url || url;
     try {
-      const info = await soundCloudOembed(playlistUrl);
+      const info = await soundCloudOembed(playlistUrl, signal);
       result.creator = info.author_name || items[0].playlist_uploader || '';
       result.artworkUrl = info.thumbnail_url || null;
       result.sourceUrl = playlistUrl;
@@ -177,11 +179,11 @@ function spotifyTrack(item, albumName, art) {
   };
 }
 
-async function extractSpotify(url) {
+async function extractSpotify(url, signal) {
   const match = url.match(/spotify\.com\/(?:intl-[a-z]{2}\/)?(track|album|playlist)\/([a-zA-Z0-9]+)/i);
   if (!match) throw new Error('Invalid Spotify link');
   const [, type, id] = match;
-  const embed = await fetch(`https://open.spotify.com/embed/${type}/${id}`, { signal: AbortSignal.timeout(20000) });
+  const embed = await fetchPublic(`https://open.spotify.com/embed/${type}/${id}`, signal);
   if (!embed.ok) throw new Error(`Spotify returned HTTP ${embed.status}`);
   const html = await embed.text();
   const jsonText = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/)?.[1];
@@ -193,12 +195,32 @@ async function extractSpotify(url) {
   const items = type === 'track' ? [entity] : entity.trackList || [];
   const tracks = items.map(item => spotifyTrack(item, type === 'album' ? title : '', artworkUrl)).filter(track => track.title);
   if (!tracks.length) throw new Error('No tracks found in this Spotify link');
+  let totalCount = null;
+  if (type === 'playlist') {
+    try {
+      const page = await fetchPublic(`https://open.spotify.com/playlist/${id}`, signal);
+      if (page.ok) {
+        const pageHtml = await page.text();
+        const description = [...pageHtml.matchAll(/<meta\b[^>]*>/gi)]
+          .find(([tag]) => /\bproperty=["']og:description["']/i.test(tag))?.[0]
+          ?.match(/\bcontent=["']([^"']*)["']/i)?.[1] || '';
+        const count = Number(description.match(/([\d,]+)\s+(?:items?|songs?)/i)?.[1]?.replaceAll(',', ''));
+        if (Number.isSafeInteger(count) && count > 0) totalCount = count;
+      }
+    } catch (error) { if (signal?.aborted) throw error; }
+  }
+  const incomplete = totalCount !== null && tracks.length < totalCount;
+  const warning = type !== 'playlist' ? '' : incomplete
+    ? `Spotify shows ${totalCount} items, but its public preview provided only ${tracks.length}. ${totalCount - tracks.length} are missing from this queue. Paste the complete tracklist before treating this as a full playlist.`
+    : totalCount === null ? `Spotify's public preview returned ${tracks.length} tracks. The full playlist length is unavailable here; compare with Spotify and paste a complete tracklist if tracks are missing.` : '';
   return { title, tracks, creator: entity.subtitle || entity.owner?.name || '', artworkUrl, sourceUrl: url,
-    warning: type === 'playlist' ? `Spotify's public preview returned ${tracks.length} tracks. The full playlist length is unavailable here; compare with Spotify and paste a complete tracklist if tracks are missing.` : '' };
+    totalCount, incomplete, warning };
 }
 
-export async function parseInput(input) {
+export async function parseInput(input, signal) {
   const raw = String(input || '').trim();
+  if (raw.length > 1000000) throw new Error('Input is too large');
+  signal?.throwIfAborted();
   if (!raw) throw new Error('Paste a link or tracklist first');
   const lines = raw.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   if (lines.length > 1 && lines.some(line => detectInputType(line) !== 'text' || /^https?:\/\//i.test(line))) {
@@ -207,9 +229,13 @@ export async function parseInput(input) {
     for (const line of lines) {
       const type = detectInputType(line);
       const url = sanitizeUrl(line);
-      results.push(type === 'spotify' ? await extractSpotify(url) : type === 'apple' ? await extractAppleMusic(url) : await extractWithYtDlp(url, type));
+      signal?.throwIfAborted();
+      try { results.push(type === 'spotify' ? await extractSpotify(url, signal) : type === 'apple' ? await extractAppleMusic(url, signal) : await extractWithYtDlp(url, type, signal)); } catch (error) {
+        if (signal?.aborted) throw error;
+        results.push({tracks: [], warning: type + ': ' + error.message});
+      }
     }
-    return { source: 'links', title: `${lines.length} links`, tracks: results.flatMap(result => result.tracks) };
+    return { source: 'links', title: `${lines.length} links`, tracks: results.flatMap(result => result.tracks), incomplete: results.some(result => result.incomplete), warning: results.map(result => result.warning).filter(Boolean).join(' \n'), inputs: results.map(result => ({title: result.title, warning: result.warning, count: result.tracks.length})) };
   }
   const type = detectInputType(raw);
   if (type === 'text') {
@@ -219,6 +245,6 @@ export async function parseInput(input) {
     return { source: 'text', title: 'Pasted tracklist', tracks };
   }
   const url = sanitizeUrl(raw);
-  const entity = type === 'spotify' ? await extractSpotify(url) : type === 'apple' ? await extractAppleMusic(url) : await extractWithYtDlp(url, type);
+  const entity = type === 'spotify' ? await extractSpotify(url, signal) : type === 'apple' ? await extractAppleMusic(url, signal) : await extractWithYtDlp(url, type, signal);
   return { source: type, ...entity };
 }

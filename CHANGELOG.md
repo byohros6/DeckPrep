@@ -1,5 +1,47 @@
 # Changelog
 
+## 1.4.0-beta.13 (folder choice clarification)
+
+- Keep the new subfolder field empty when loading a playlist. A blank name saves directly into the destination the user chose; an entered name creates that subfolder for this download. The app no longer guesses a name from the playlist title.
+- Show the resulting path in the folder-layout preview. DAIR remains only a test example, not an app default.
+
+## 1.4.0-beta.12 (playlist folder and coverage)
+
+- Let a download go into a named folder such as `DAIR` inside the destination chosen by the user. Validate the folder name, preserve the choice across restarts, and verify the generated-audio desktop export lands in that folder.
+- Compare Spotify's public playlist preview with the public page's advertised item count when available. Show the exact shortfall and require an explicit partial-download choice before starting an incomplete queue; main IPC checks this too.
+- Keep source metadata honest: an album or genre is still blank when the public preview does not provide it. Spotify sign-in and full third-party playlist access are not implemented.
+
+## 1.4.0-beta.11 (downloader scope)
+
+- Focus the app on downloading from public links and pasted tracklists. Remove Add audio files, Add folder, and Create playlist file from the desktop interface and preload/main IPC paths.
+- Rename the primary action Download selected and remove local-file and Rekordbox options from the interactive design concept.
+- Keep existing saved sessions and downloaded files intact; legacy local tracks remain processable from an older saved session, but no new local files can be imported.
+- Replace desktop acceptance with a generated recording served by a local test source, covering download, audio-ending review, restore, approved trim, verified MP3, and absence of the retired controls.
+- Retire the former Rekordbox acceptance gate and update the master plan, roadmap, testing and portfolio scope explicitly.
+
+## 1.4.0-beta.10 (design checkpoint)
+
+- Open the Windows app maximized and verify that behavior in the desktop workflow.
+- Widen match details, wrap full candidate titles, display version evidence, and block incompatible manual choices and conflicting saved selections.
+- Keep short SoundCloud preview rejection independent of folder layout; the legacy Sampler Bank folder no longer bypasses that guard.
+- Clarify the existing interface: Prepare selected also covers local audio, Create playlist file explains the optional Rekordbox handoff, All songs together names the flat layout, and support actions move under Help and updates.
+- Make long saved-session validation cancellable, keep the saved queue on cancellation, and prevent imports or exports from overtaking restore. Reserve local import before its file dialog opens.
+- Clean up app-created review audio that is more than seven days old and absent from the saved session. Keep referenced review sources and unfamiliar cache contents.
+- Add a clickable guided/studio interface concept and a detailed redesign backlog informed by user feedback. The prototype is illustrative; screenshot OCR and the new interface are not yet part of the app.
+
+
+## 1.4.0-beta.9 (implementation preview)
+
+- Reject explicit conflicting recordings (live, instrumental, clean/explicit, speed variants) and preserve Unicode matching and candidate evidence.
+- Serialize versioned session saves, retain a recovery backup, and persist main-process progress.
+- Decode audio fully before success, inspect possible silent endings, and require preview/review before applying a trim. Preserve original audio.
+- Add local audio imports, waveform/audio review, verified output manifests, and ordered relative-path M3U8 crate export.
+- Bound processing stages, preserve multi-link warnings, and keep source bitrate distinct from output quality.
+- Enable renderer sandboxing and validate IPC senders; update Electron to 44.4.5 and packaging to 26.15.3.
+- Add actual Electron review/restore/trim/export tests, generated-audio regression tests, synthetic scale checks, and persistent plan/progress/acceptance documentation.
+- This is a development beta, not a completed stable release: real Rekordbox, multi-machine beta, representative matching precision, signing and redistribution gates remain open.
+
+
 ## 1.4.0-beta.8
 
 - Automatically search for another SoundCloud or YouTube recording after a selected source proves protected or lacks exportable audio, and continue exporting a confident match once. Never retry the same blocked SoundCloud track as an alternative.

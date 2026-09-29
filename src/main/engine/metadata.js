@@ -17,3 +17,9 @@ export function cleanArtist(rawArtist) {
     .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
     .replace(/( - Topic|VEVO| Records| Recordings| Official| Oficial)$/i, '').trim();
 }
+
+export function versionedTitle(track) {
+  const title = cleanTitle(track.title || '');
+  const mix = String(track.mix || '').trim();
+  return mix && !title.toLowerCase().includes(mix.toLowerCase()) ? `${title} (${mix})` : title;
+}

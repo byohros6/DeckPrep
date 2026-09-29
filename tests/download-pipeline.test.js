@@ -65,6 +65,14 @@ test('protected source failures explain that another recording is needed', () =>
   assert.equal(needsAlternative(new Error('spawn ffmpeg ENOENT')), false);
 });
 
+test('folder layout cannot turn a short SoundCloud preview into a valid song', async () => {
+  for (const mode of ['flat', 'sampler']) {
+    const queue = new DownloadQueue({destinationDir: 'C:\\Music', mode});
+    await assert.rejects(queue.processTrack({source: 'soundcloud', artist: 'Artist', title: 'Track', durationSec: 30,
+      directUrl: 'https://soundcloud.com/example/preview'}), /short preview/);
+  }
+});
+
 test('a protected recording remains in the queue for an alternative search', async () => {
   let completedTrack;
   const summary = await new Promise(resolve => {

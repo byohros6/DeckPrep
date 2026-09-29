@@ -1,3 +1,4 @@
+import { fetchPublic } from '../network.js';
 function scriptJson(html, id) {
   const start = html.search(new RegExp(`<script[^>]*id=["']?${id}["']?[^>]*>`, 'i'));
   if (start < 0) return null;
@@ -70,8 +71,8 @@ export function parseAppleMusicPage(html, url) {
   };
 }
 
-export async function extractAppleMusic(url) {
-  const response = await fetch(url);
+export async function extractAppleMusic(url, signal) {
+  const response = await fetchPublic(url, signal);
   if (!response.ok) throw new Error(`Apple Music returned HTTP ${response.status}. Paste a tracklist if this link is unavailable.`);
   return parseAppleMusicPage(await response.text(), url);
 }

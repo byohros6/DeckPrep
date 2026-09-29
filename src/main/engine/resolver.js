@@ -23,7 +23,7 @@ export async function resolveAudioCandidate({ artist, title, mix, targetDuration
   if (directUrl) {
     try {
       const { stdout } = await execFileAsync(binary, ['--dump-json', '--no-playlist', '--', directUrl], {
-        maxBuffer: 10 * 1024 * 1024, signal
+        maxBuffer: 10 * 1024 * 1024, signal, timeout: 30000, windowsHide: true
       });
       const item = readJsonLines(stdout)[0];
       if (item && (!targetDurationSec || !item.duration || Math.abs(item.duration - targetDurationSec) <= 10)) {
@@ -38,7 +38,7 @@ export async function resolveAudioCandidate({ artist, title, mix, targetDuration
   if (strictDirect) throw new Error('This recording has no source link');
   const query = buildSearchQuery(artist, title, mix);
   const { stdout } = await execFileAsync(binary, ['--dump-json', '--flat-playlist', '--', `ytsearch5:${query}`], {
-    maxBuffer: 15 * 1024 * 1024, signal
+    maxBuffer: 15 * 1024 * 1024, signal, timeout: 30000, windowsHide: true
   });
   const candidates = readJsonLines(stdout).map(item => ({
     url: item.webpage_url || (item.id ? `https://www.youtube.com/watch?v=${item.id}` : item.url),

@@ -1,3 +1,4 @@
+import { createAudioReview } from './audioReview.js';
 import { selectRange } from './selection.js';
 
 const byId = id => document.getElementById(id);
@@ -33,6 +34,12 @@ let logCount = 0;
 let cpuCores = 4;
 let selectionAnchorIndex = null;
 let automaticRecoveryIndices = null;
+const audioReview = createAudioReview(byId('audioReview'), track => {
+  const current = loadedTracks.find(item => item.id === track.id);
+  if (current) Object.assign(current, track);
+  renderTrackTable(); updateControls(); saveQueueSoon(0);
+  appendLog('Audio choice saved. Choose Download selected to finish the approved file.', 'sys-msg');
+}, message => appendLog(message, 'err-msg'));
 
 function presetConcurrency(mode) {
   if (mode === 'gentle') return Math.min(2, Math.max(1, Math.floor(cpuCores / 4)));
@@ -54,11 +61,13 @@ function updateSpeed(mode = byId('speedMode').value) {
 
 function updateCrateHint() {
   const mode = byId('crateMode').value;
-  byId('crateModePreview').textContent = mode === 'artist' ? 'Your folder\\Artist\\Song Title.mp3'
-    : mode === 'genre' ? 'Your folder\\Genre\\Song Title.mp3'
-      : mode === 'sampler' ? 'Your folder\\DJ Sampler Bank\\Song Title.mp3'
-        : mode === 'partitioned' ? 'Your folder\\Genre or Artist\\Song Title.mp3'
-        : 'Your folder\\Song Title.mp3';
+  const name = byId('folderName').value.trim();
+  const base = name ? `Chosen folder\\${name}` : 'Chosen folder';
+  byId('crateModePreview').textContent = mode === 'artist' ? `${base}\\Artist\\Song Title.mp3`
+    : mode === 'genre' ? `${base}\\Genre\\Song Title.mp3`
+      : mode === 'sampler' ? `${base}\\DJ Sampler Bank\\Song Title.mp3`
+        : mode === 'partitioned' ? `${base}\\Genre or Artist\\Song Title.mp3`
+        : `${base}\\Song Title.mp3`;
   byId('crateModeHint').textContent = mode === 'sampler'
     ? 'Full-length songs in one named folder. No sampler pads or cue points.'
     : mode === 'artist' ? 'Missing artist goes in Unknown Artist.'
@@ -78,6 +87,7 @@ function appendLog(message, className = '') {
   entry.className = `log-entry ${className}`;
   entry.textContent = message;
   logConsole.appendChild(entry);
+  while (logConsole.children.length > 500) logConsole.firstChild.remove();
   logConsole.scrollTop = logConsole.scrollHeight;
   byId('activityCount').textContent = String(++logCount);
   if (className === 'err-msg' && !loadedTracks.length) byId('activityPanel').open = true;
@@ -93,20 +103,22 @@ function formatDuration(value) {
   return seconds ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : '—';
 }
 
-function saveQueueSoon(delay = 400) {
-  if (!loadedTracks.length || sessionPromptOpen) return;
+function saveQueueNow() {
   clearTimeout(sessionSaveTimer);
-  sessionSaveTimer = setTimeout(() => {
-    const selected = selectedTracks();
-    const complete = selected.length && selected.every(track => ['done', 'skipped'].includes(track.status));
-    window.djAPI.saveSession({
-      input: inputSource.value, source: collectionSource, collection: collectionInfo,
-      tracks: loadedTracks, destinationDir, mode: byId('crateMode').value,
-      openFolderWhenFinished: byId('openFolderWhenFinished').checked,
-      concurrency: Number(byId('concurrencyRange').value), performanceMode: byId('speedMode').value,
-      phase: isDownloading ? 'downloading' : complete ? 'completed' : 'review'
-    }).catch(err => appendLog(`Could not save session: ${err.message}`, 'err-msg'));
-  }, delay);
+  if (!loadedTracks.length || sessionPromptOpen) return Promise.resolve();
+  const selected = selectedTracks();
+  const complete = selected.length && selected.every(track => ['done', 'skipped'].includes(track.status));
+  return window.djAPI.saveSession({
+    input: inputSource.value, source: collectionSource, collection: collectionInfo,
+    tracks: loadedTracks, destinationDir, folderName: byId('folderName').value, mode: byId('crateMode').value,
+    openFolderWhenFinished: byId('openFolderWhenFinished').checked,
+    concurrency: Number(byId('concurrencyRange').value), performanceMode: byId('speedMode').value,
+    phase: isDownloading ? 'downloading' : complete ? 'completed' : 'review'
+  });
+}
+function saveQueueSoon(delay = 150) {
+  clearTimeout(sessionSaveTimer);
+  sessionSaveTimer = setTimeout(() => saveQueueNow().catch(error => appendLog('Could not save session: ' + error.message, 'err-msg')), delay);
 }
 
 function showPlaylistCard(result) {
@@ -146,6 +158,16 @@ function showSourceWarning(message) {
   const text = document.createElement('span');
   text.textContent = message;
   warning.appendChild(text);
+  if (collectionInfo.incomplete) {
+    const choice = document.createElement('label');
+    choice.className = 'partial-playlist-choice';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = 'partialPlaylistConsent';
+    checkbox.addEventListener('change', updateControls);
+    choice.append(checkbox, document.createTextNode(` Download only these ${loadedTracks.length} available tracks`));
+    warning.appendChild(choice);
+  }
   if (collectionSource === 'spotify') {
     const action = document.createElement('button');
     action.type = 'button';
@@ -167,7 +189,7 @@ function markDuplicates(excludeNew = false) {
   let changed = false;
   for (const track of loadedTracks) {
     const usable = !track.needsMetadata && track.title && track.artist && track.artist !== '—';
-    const key = usable ? [track.artist, track.title, track.mix || ''].map(value => value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim()).join('|') : '';
+    const key = usable ? [track.artist, track.title, track.mix || ''].map(value => value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()).join('|') : '';
     const first = key ? firstBySong.get(key) : null;
     const duplicateOf = first || null;
     if (track.duplicateOf !== duplicateOf) {
@@ -179,9 +201,9 @@ function markDuplicates(excludeNew = false) {
   }
   return changed;
 }
-function pendingTracks() { return selectedTracks().filter(track => !['done', 'skipped'].includes(track.status)); }
+function pendingTracks() { return selectedTracks().filter(track => !['done', 'skipped', 'audio_review'].includes(track.status)); }
 function detailsNeeded() { return selectedTracks().filter(track => track.needsMetadata); }
-function matchesNeeded() { return selectedTracks().filter(track => !track.needsMetadata && (!track.directUrl || track.blockedOriginal) && !track.matchUrl); }
+function matchesNeeded() { return selectedTracks().filter(track => !track.needsMetadata && (!track.localPath && (!track.directUrl || track.blockedOriginal)) && !track.matchUrl); }
 
 function visibleTracks() {
   const query = byId('queueSearch').value.trim().toLowerCase();
@@ -189,7 +211,7 @@ function visibleTracks() {
   return loadedTracks.filter(track => {
     if (query && !`${track.title} ${track.artist} ${track.mix || ''}`.toLowerCase().includes(query)) return false;
     if (filter === 'selected') return track.selected;
-    if (filter === 'review') return track.needsMetadata || track.matchState === 'review' || ((!track.directUrl || track.blockedOriginal) && !track.matchUrl);
+    if (filter === 'review') return track.status === 'audio_review' || track.needsMetadata || track.matchState === 'review' || ((!track.localPath && (!track.directUrl || track.blockedOriginal)) && !track.matchUrl);
     if (filter === 'failed') return track.status === 'error' || !!track.metadataError || !!track.matchError;
     if (filter === 'done') return ['done', 'skipped'].includes(track.status);
     return true;
@@ -197,14 +219,16 @@ function visibleTracks() {
 }
 
 function displayStatus(track) {
+  if (track.status === 'audio_review') return 'Review ending';
+  if (track.status === 'inspecting') return 'Checking audio';
   if (!track.selected && !isDownloading) return track.duplicateOf ? `Duplicate of #${String(track.duplicateOf).padStart(3, '0')}` : 'Not selected';
   if (track.status === 'error') return track.blockedOriginal ? isFindingMatches ? 'Finding alternative' : 'Find alternative' : 'Failed';
-  if (track.status === 'done') return track.duplicateOf ? 'Downloaded · duplicate' : 'Downloaded';
+  if (track.status === 'done') return track.duplicateOf ? 'Verified · duplicate' : 'Verified';
   if (track.status === 'skipped') return 'Already exists';
   if (track.metadataError) return 'Details failed';
   if (track.needsMetadata) return 'Details needed';
   if (track.matchError) return 'Match failed';
-  if ((!track.directUrl || track.blockedOriginal) && !track.matchUrl) return track.blockedOriginal ? track.candidates?.length ? 'Review alternative' : 'Find alternative' : track.candidates?.length ? 'Review match' : 'Find match';
+  if ((!track.localPath && (!track.directUrl || track.blockedOriginal)) && !track.matchUrl) return track.blockedOriginal ? track.candidates?.length ? 'Review alternative' : 'Find alternative' : track.candidates?.length ? 'Review match' : 'Find match';
   if (track.status === 'pending' && track.matchState === 'matched') return 'Auto matched';
   if (track.status === 'pending' && track.matchState === 'chosen') return 'Match chosen';
   return track.status === 'pending' ? 'Ready' : track.status;
@@ -216,7 +240,7 @@ function statusClass(track) {
   if (track.metadataError) return 'error';
   if (track.needsMetadata) return 'needs-details';
   if (track.matchError) return 'error';
-  if ((!track.directUrl || track.blockedOriginal) && !track.matchUrl) return 'needs-details';
+  if ((!track.localPath && (!track.directUrl || track.blockedOriginal)) && !track.matchUrl) return 'needs-details';
   if (track.status === 'pending' && track.matchUrl) return 'matched';
   return track.status;
 }
@@ -330,15 +354,18 @@ function updateControls() {
   selectAll.checked = !!visible.length && visible.every(track => track.selected);
   selectAll.indeterminate = visible.some(track => track.selected) && !selectAll.checked;
   byId('clearSelectionBtn').disabled = !selected.length || isDownloading || isFetchingDetails || isFindingMatches || isLoadingInput;
-  startBtn.disabled = isLoadingInput || isDownloading || isFetchingDetails || isFindingMatches || !pending.length || !!needed.length || !!unresolved.length || !destinationDir;
-  startBtn.title = needed.length ? 'Fetch details for selected tracks first' : unresolved.length ? 'Review selected audio matches first' : !destinationDir ? 'Choose a destination folder' : !pending.length ? 'All selected tracks are complete' : '';
+  const partialUnconfirmed = collectionInfo.incomplete && !byId('partialPlaylistConsent')?.checked;
+  startBtn.disabled = isLoadingInput || isDownloading || isFetchingDetails || isFindingMatches || !pending.length || !!needed.length || !!unresolved.length || !destinationDir || partialUnconfirmed;
+  startBtn.title = needed.length ? 'Fetch details for selected tracks first' : unresolved.length ? 'Review selected audio matches first' : !destinationDir ? 'Choose a destination folder' : partialUnconfirmed ? 'Confirm that this download will omit missing playlist tracks' : !pending.length ? 'All selected tracks are complete' : '';
   byId('retryFailedBtn').hidden = !loadedTracks.some(track => track.status === 'error' && !track.blockedOriginal) || isDownloading;
+  byId('cancelImportBtn').hidden = !isLoadingInput;
   updateMetadataBar();
   updateMatchingBar();
   updateProgress();
 }
 
 function renderDetail(track) {
+  audioReview.render(track, isDownloading || isFindingMatches || isFetchingDetails);
   byId('detailPanel').hidden = false;
   byId('detailNumber').textContent = `TRACK ${String(track.index).padStart(3, '0')}`;
   byId('detailTitle').textContent = track.title;
@@ -346,7 +373,7 @@ function renderDetail(track) {
   byId('openOriginalBtn').hidden = !(track.sourceUrl || track.directUrl);
   byId('detailMix').textContent = track.mix || '—';
   byId('detailDuration').textContent = formatDuration(track.durationSec);
-  byId('detailSource').textContent = track.source === 'apple' ? 'Apple Music' : track.source === 'youtube' ? 'YouTube' : track.source === 'soundcloud' ? 'SoundCloud' : track.source === 'spotify' ? 'Spotify' : 'Tracklist';
+  byId('detailSource').textContent = track.source === 'local' && track.localPath ? 'Local audio' : track.source === 'apple' ? 'Apple Music' : track.source === 'youtube' ? 'YouTube' : track.source === 'soundcloud' ? 'SoundCloud' : track.source === 'spotify' ? 'Spotify' : 'Tracklist';
   const help = track.errorMessage || track.metadataError || track.matchError;
   byId('detailHelp').textContent = help || (track.duplicateOf ? `Same artist, title, and version as track ${String(track.duplicateOf).padStart(3, '0')}. This is a separate source link; leave it unchecked unless you want both copies.`
     : track.matchUrl && track.matchState === 'matched' ? 'A close match was selected automatically. Open it to check or choose another.'
@@ -361,13 +388,21 @@ function renderDetail(track) {
     const button = document.createElement('button');
     button.className = `candidate ${candidate.url === track.matchUrl ? 'chosen' : ''}`;
     button.type = 'button';
-    button.setAttribute('aria-label', `Use ${candidate.title} from ${candidate.provider}`);
     const title = document.createElement('strong');
     title.textContent = candidate.title;
     const details = document.createElement('span');
-    const quality = candidate.score >= 0.8 ? 'Likely' : candidate.score >= 0.55 ? 'Possible' : 'Weak';
+    const incompatible = candidate.evidence?.versionCompatible === false;
+    const quality = incompatible ? 'Wrong version' : candidate.score >= 0.8 ? 'Likely' : candidate.score >= 0.55 ? 'Possible' : 'Weak';
     details.textContent = `${candidate.provider} · ${candidate.artist || 'Unknown artist'} · ${formatDuration(candidate.durationSec)} · ${quality} match`;
-    button.append(title, details);
+    const reason = document.createElement('span');
+    reason.className = `candidate-reason ${candidate.evidence?.versionCompatible === false ? 'conflict' : ''}`;
+    reason.textContent = incompatible
+      ? `This result conflicts with the requested ${track.mix || 'recording version'}. Open the source or search again.`
+      : candidate.reason || 'Compare title, artist, version and duration with the requested track.';
+    button.classList.toggle('conflict', incompatible);
+    button.disabled = incompatible || isDownloading || isFindingMatches || isFetchingDetails;
+    button.setAttribute('aria-label', `${incompatible ? 'Version conflict: ' : 'Use '}${candidate.title} from ${candidate.provider}. ${reason.textContent}`);
+    button.append(title, details, reason);
     button.addEventListener('click', async () => {
       const result = await window.djAPI.chooseMatch(track.index, candidate.url);
       if (!result.success) { appendLog(result.error, 'err-msg'); return; }
@@ -402,6 +437,7 @@ function openDetail(index) {
 
 byId('closeDetailBtn').addEventListener('click', () => {
   activeDetailIndex = null;
+  audioReview.hide();
   byId('detailPanel').hidden = true;
   renderTrackTable();
 });
@@ -488,27 +524,7 @@ analyzeBtn.addEventListener('click', async () => {
   try {
     const result = await window.djAPI.parseInput(rawInput);
     if (!result.success) throw new Error(result.error);
-    loadedTracks = result.tracks.map((track, index) => ({ ...track, index: index + 1, selected: true, status: 'pending',
-      matchState: track.directUrl ? 'direct' : 'needed' }));
-    selectionAnchorIndex = null;
-    markDuplicates(true);
-    collectionSource = result.source;
-    collectionInfo = { title: result.title, creator: result.creator, artworkUrl: result.artworkUrl, sourceUrl: result.sourceUrl, warning: result.warning };
-    byId('queueSearch').value = '';
-    byId('queueFilter').value = 'all';
-    activeDetailIndex = null;
-    byId('detailPanel').hidden = true;
-    byId('summaryBanner').hidden = true;
-    byId('trackCount').textContent = loadedTracks.length;
-    byId('collectionTitle').textContent = collectionSubtitle(result);
-    showPlaylistCard(result);
-    showSourceWarning(result.warning);
-    renderTrackTable();
-    updateControls();
-    appendLog(`Loaded ${loadedTracks.length} tracks from ${result.source}.`, 'sys-msg');
-    byId('sourceHint').textContent = 'Paste a track, playlist, or several links.';
-    byId('sourceHint').classList.remove('error');
-    if (result.warning) appendLog(result.warning, 'sys-msg');
+    installResult(result);
     autoFetch = loadedTracks.some(track => track.needsMetadata && track.soundcloudId);
   } catch (err) {
     appendLog(`Could not load tracks: ${err.message}`, 'err-msg');
@@ -567,7 +583,7 @@ cancelDetailsBtn.addEventListener('click', async () => {
 });
 
 window.djAPI.onMetadataProgress(({ track, completed, total }) => {
-  const item = loadedTracks.find(entry => entry.index === track.index);
+  const item = loadedTracks.find(entry => entry.id === track.id);
   if (item) {
     Object.assign(item, track);
     if (markDuplicates(true)) renderTrackTable();
@@ -634,7 +650,7 @@ window.djAPI.onMatchCompleted(summary => {
   analyzeBtn.disabled = false;
   cancelMatchesBtn.disabled = false;
   renderTrackTable(); updateControls(); saveQueueSoon();
-  const review = selectedTracks().filter(track => (!track.directUrl || track.blockedOriginal) && !track.matchUrl && track.candidates?.length).length;
+  const review = selectedTracks().filter(track => (!track.localPath && (!track.directUrl || track.blockedOriginal)) && !track.matchUrl && track.candidates?.length).length;
   const automatic = selectedTracks().filter(track => track.matchState === 'matched' && track.matchUrl).length;
   const banner = byId('summaryBanner');
   banner.hidden = !summary.cancelled && !automatic && !summary.errors;
@@ -665,6 +681,7 @@ byId('browseBtn').addEventListener('click', async () => {
   } catch (err) { appendLog(`Could not choose destination: ${err.message}`, 'err-msg'); }
 });
 byId('openFolderBtn').addEventListener('click', () => window.djAPI.openFolder(destinationDir));
+byId('folderName').addEventListener('input', () => { updateCrateHint(); saveQueueSoon(); });
 byId('clearLogBtn').addEventListener('click', () => { logConsole.textContent = ''; logCount = 0; byId('activityCount').textContent = '0'; });
 byId('concurrencyRange').addEventListener('input', () => { byId('speedMode').value = 'custom'; updateSpeed(); saveQueueSoon(); });
 byId('speedMode').addEventListener('change', () => { updateSpeed(); saveQueueSoon(); });
@@ -678,7 +695,7 @@ byId('retryFailedBtn').addEventListener('click', () => {
   loadedTracks.forEach(track => { track.selected = failed.includes(track); });
   byId('queueFilter').value = 'selected';
   renderTrackTable(); updateControls(); saveQueueSoon();
-  appendLog(`${failed.length} failed tracks selected for retry. Review them, then download selected.`, 'sys-msg');
+  appendLog(`${failed.length} failed tracks selected for retry. Review them, then choose Download selected.`, 'sys-msg');
 });
 
 async function beginDownload(indices) {
@@ -694,7 +711,7 @@ async function beginDownload(indices) {
   saveQueueSoon();
   try {
     const result = await window.djAPI.startDownload({
-      destinationDir, selectedIndices: indices,
+      destinationDir, folderName: byId('folderName').value, allowPartialPlaylist: byId('partialPlaylistConsent')?.checked === true, selectedIndices: indices,
       concurrency: Math.max(1, Math.min(12, Number(byId('concurrencyRange').value) || 1)), mode: byId('crateMode').value,
       openFolderWhenFinished: byId('openFolderWhenFinished').checked
     });
@@ -744,14 +761,15 @@ window.djAPI.onBatchCompleted(summary => {
   const downloaded = selected.filter(track => track.status === 'done').length;
   const skipped = selected.filter(track => track.status === 'skipped').length;
   const errors = selected.filter(track => track.status === 'error').length;
+  const review = selected.filter(track => track.status === 'audio_review').length;
   const notCompleted = selected.length - downloaded - skipped - errors;
   banner.hidden = false;
-  banner.classList.toggle('has-errors', errors > 0 || summary.cancelled);
+  banner.classList.toggle('has-errors', errors > 0 || review > 0 || summary.cancelled);
   const blocked = loadedTracks.filter(track => track.status === 'error' && track.blockedOriginal);
   const resultText = summary.cancelled ? ['Stopped', downloaded ? `${downloaded} downloaded` : '',
-    notCompleted ? `${notCompleted} not completed` : '', errors ? `${errors} need attention` : ''].filter(Boolean).join(' · ')
+    notCompleted ? `${notCompleted} not completed` : '', errors ? `${errors} need attention` : '', review ? `${review} need ending review` : ''].filter(Boolean).join(' · ')
     : [downloaded ? `${downloaded} downloaded` : '', skipped ? `${skipped} already existed` : '',
-      errors ? `${errors} need attention` : ''].filter(Boolean).join(' · ');
+      errors ? `${errors} need attention` : '', review ? `${review} need ending review` : ''].filter(Boolean).join(' · ');
   banner.replaceChildren(document.createTextNode(resultText));
   if (blocked.length) {
     const action = document.createElement('button');
@@ -774,9 +792,13 @@ window.djAPI.onBatchCompleted(summary => {
 
 byId('resumeSessionBtn').addEventListener('click', async () => {
   const button = byId('resumeSessionBtn');
+  const stopButton = byId('cancelRestoreBtn');
   button.disabled = true;
+  stopButton.hidden = false;
+  stopButton.disabled = false;
   try {
     const result = await window.djAPI.restoreSession();
+    if (result.cancelled) { appendLog('Restore stopped. Your saved queue is still available.', 'sys-msg'); return; }
     if (!result.success) throw new Error(result.error);
     const session = result.session;
     inputSource.value = session.input || '';
@@ -786,6 +808,7 @@ byId('resumeSessionBtn').addEventListener('click', async () => {
     collectionInfo = session.collection || {};
     destinationDir = session.destinationDir || '';
     byId('destPath').value = destinationDir;
+    byId('folderName').value = session.folderName || '';
     byId('openFolderBtn').disabled = !destinationDir;
     if (typeof session.openFolderWhenFinished === 'boolean') {
       byId('openFolderWhenFinished').checked = session.openFolderWhenFinished;
@@ -809,8 +832,16 @@ byId('resumeSessionBtn').addEventListener('click', async () => {
     appendLog(`Restored ${loadedTracks.length} tracks${session.reusedMatches ? `; ${session.reusedMatches} existing candidates matched automatically` : ''}. Review before downloading.`, 'sys-msg');
   } catch (err) {
     appendLog(`Could not restore session: ${err.message}`, 'err-msg');
-    button.disabled = false;
+  } finally {
+    stopButton.hidden = true;
+    stopButton.disabled = false;
+    if (sessionPromptOpen) button.disabled = false;
   }
+});
+byId('cancelRestoreBtn').addEventListener('click', async () => {
+  const button = byId('cancelRestoreBtn');
+  button.disabled = true;
+  await window.djAPI.cancelRestore();
 });
 byId('discardSessionBtn').addEventListener('click', async () => {
   try {
@@ -861,3 +892,45 @@ byId('discardSessionBtn').addEventListener('click', async () => {
     appendLog(err.message, 'err-msg');
   }
 })();
+
+function installResult(result) {
+    loadedTracks = result.tracks.map((track, index) => ({ ...track, index: index + 1, selected: true, status: 'pending',
+      matchState: track.directUrl || track.localPath ? 'direct' : 'needed' }));
+    selectionAnchorIndex = null;
+    markDuplicates(true);
+    collectionSource = result.source;
+    collectionInfo = { title: result.title, creator: result.creator, artworkUrl: result.artworkUrl, sourceUrl: result.sourceUrl, warning: result.warning, totalCount: result.totalCount, incomplete: result.incomplete };
+    byId('folderName').value = '';
+    updateCrateHint();
+    byId('queueSearch').value = '';
+    byId('queueFilter').value = 'all';
+    activeDetailIndex = null;
+    byId('detailPanel').hidden = true;
+    byId('summaryBanner').hidden = true;
+    byId('trackCount').textContent = loadedTracks.length;
+    byId('collectionTitle').textContent = collectionSubtitle(result);
+    showPlaylistCard(result);
+    showSourceWarning(result.warning);
+    renderTrackTable();
+    updateControls();
+    appendLog(`Loaded ${loadedTracks.length} tracks from ${result.source}.`, 'sys-msg');
+    byId('sourceHint').textContent = 'Paste a track, playlist, or several links.';
+    byId('sourceHint').classList.remove('error');
+    if (result.warning) appendLog(result.warning, 'sys-msg');
+
+}
+
+byId('cancelImportBtn').onclick = () => window.djAPI.cancelImport();
+byId('diagnosticsBtn').onclick = async () => {
+  try { const result = await window.djAPI.exportDiagnostics(); if (result.success) appendLog('Redacted diagnostics saved.', 'sys-msg'); }
+  catch (error) { appendLog(error.message, 'err-msg'); }
+};
+byId('updatesBtn').onclick = () => window.djAPI.openReleases();
+window.djAPI.onFlushBeforeClose(async () => {
+  try { await saveQueueNow(); window.djAPI.acknowledgeFlush(true); }
+  catch { window.djAPI.acknowledgeFlush(false); }
+});
+document.addEventListener('keydown', event => {
+  if (event.ctrlKey && event.key.toLowerCase() === 'f') { event.preventDefault(); byId('queueSearch').focus(); }
+  if (event.key === 'Escape') { audioReview.hide(); byId('closeDetailBtn').click(); }
+});

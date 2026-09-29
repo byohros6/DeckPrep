@@ -1,8 +1,34 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rankCandidates } from '../src/main/engine/matching.js';
+import { candidateVersionCompatible, rankCandidates } from '../src/main/engine/matching.js';
 
 const track = { artist: 'Peggy Gou', title: '(It Goes Like) Nanana', mix: '', durationSec: 231 };
+
+test('explicit variants never auto-match a plain recording at identical duration', () => {
+  for (const suffix of ['Live', 'Instrumental', 'Clean', 'Explicit', 'Sped Up', 'Slowed', 'Acapella', 'Cover', 'Extended Mix', 'Radio Edit']) {
+    const result = rankCandidates(track, [{url: 'https://youtube.com/watch?v=variant', artist: track.artist, title: `${track.title} (${suffix})`, durationSec: track.durationSec}]);
+    assert.equal(result.chosen, null, suffix);
+  }
+});
+
+test('a named remix conflict is incompatible even for a manual choice', () => {
+  const requested = {artist: 'Kerri Chandler', title: 'The Way It Goes', mix: 'Chris Stassy Remix', durationSec: 488};
+  assert.equal(candidateVersionCompatible(requested, {title: 'The Way It Goes (Original Mix)', durationSec: 488}), false);
+  assert.equal(candidateVersionCompatible(requested, {title: 'The Way It Goes (Chris Stassy Remix)', durationSec: 488}), true);
+});
+
+test('Hebrew tokens distinguish matching from unrelated titles', () => {
+  const requested = {artist: 'עומר אדם', title: 'בת ים', durationSec: 200};
+  assert.ok(rankCandidates(requested, [{url: 'https://youtube.com/watch?v=one', ...requested}]).chosen);
+  assert.equal(rankCandidates(requested, [{url: 'https://youtube.com/watch?v=two', artist: requested.artist, title: 'שיר אחר', durationSec: 200}]).chosen, null);
+});
+
+test('similar remix names require every requested version word and failed alternatives are excluded', () => {
+  const requested = {...track, mix: 'The Midnight Project Remix'};
+  const wrong = {url: 'https://youtube.com/watch?v=wrong', artist: track.artist, title: track.title + ' (The Midnight City Remix)', durationSec: track.durationSec};
+  assert.equal(rankCandidates(requested, [wrong]).chosen, null);
+  assert.equal(rankCandidates({...track, blockedUrls: [wrong.url]}, [wrong]).candidates.length, 0);
+});
 
 test('a strong title, artist, and duration match can be selected automatically', () => {
   const result = rankCandidates(track, [

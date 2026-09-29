@@ -1,7 +1,7 @@
 {
   "name": "deckprep",
-  "version": "1.4.0-beta.8",
-  "description": "Prepare DJ crates from music links and tracklists",
+  "version": "1.4.0-beta.13",
+  "description": "Download and verify music from public links and tracklists",
   "main": "src/main/main.js",
   "type": "module",
   "scripts": {
@@ -10,7 +10,10 @@
     "test": "node --test tests/*.test.js",
     "dist": "electron-builder --win",
     "build:icon": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/create-icon.ps1",
-    "dist:portable": "electron-builder --win portable"
+    "dist:portable": "electron-builder --win portable",
+    "setup:desktop": "install-electron",
+    "test:desktop": "node tests/electron.e2e.js",
+    "test:scale": "node tools/benchmark.js"
   },
   "keywords": [
     "dj",
@@ -24,11 +27,13 @@
   "license": "MIT",
   "dependencies": {
     "ffmpeg-static": "^5.3.0",
+    "music-metadata": "11.16.1",
     "node-id3": "^0.2.6"
   },
   "devDependencies": {
-    "electron": "^34.2.0",
-    "electron-builder": "^25.1.8"
+    "electron": "44.4.5",
+    "electron-builder": "26.15.3",
+    "playwright": "1.63.0"
   },
   "build": {
     "appId": "app.deckprep.desktop",
@@ -58,7 +63,13 @@
     "files": [
       "src/**/*",
       "package.json",
-      "README.md"
+      "README.md",
+      "LICENSE",
+      "THIRD_PARTY_NOTICES.md",
+      "docs/licenses/**/*"
     ]
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

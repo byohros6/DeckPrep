@@ -12,25 +12,40 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           cache: npm
       - run: npm ci
+      - run: npm run setup:desktop
       - run: npm run setup:engine
       - run: npm test
+      - run: npm run test:desktop
+      - run: npm run test:scale
       - run: npm run build:icon
       - run: npm run dist:portable
+      - name: Test packaged desktop downloader and review workflow
+        shell: pwsh
+        run: |
+          $env:DECKPREP_TEST_EXE = (Resolve-Path 'dist/win-unpacked/DeckPrep.exe').Path
+          npm run test:desktop
       - name: Export a sample with the portable app
         shell: pwsh
         run: |
           $result = Join-Path $env:RUNNER_TEMP 'deckprep-engines.json'
           $portable = (Get-ChildItem dist -Filter 'DeckPrep-Portable-*.exe' | Select-Object -First 1).FullName
           if (-not $portable) { throw 'Portable executable is missing' }
-          $process = Start-Process -FilePath $portable -ArgumentList "--check-engines=$result" -Wait -PassThru -WindowStyle Hidden
+          $process = Start-Process -FilePath $portable -ArgumentList "--check-engines=$result" -PassThru -WindowStyle Hidden
+          if (-not $process.WaitForExit(60000)) { $process.Kill(); throw 'Portable export check timed out' }
           if ($process.ExitCode -ne 0 -or -not (Test-Path $result)) { throw 'Portable export check failed to run' }
           $check = Get-Content $result -Raw | ConvertFrom-Json
           if (-not $check.success -or -not $check.export) { throw $check.error }
+      - name: Record artifact checksums
+        shell: pwsh
+        run: Get-ChildItem dist -Filter 'DeckPrep-Portable-*.exe' | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash)  $($_.Name)" } | Set-Content dist/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: deckprep-portable-${{ github.sha }}
-          path: dist/DeckPrep-Portable-*.exe
+          path: |
+            dist/DeckPrep-Portable-*.exe
+            dist/SHA256SUMS.txt
+            dist/qa-*-beta11.png
           if-no-files-found: error

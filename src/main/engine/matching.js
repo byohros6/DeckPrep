@@ -9,7 +9,19 @@ const NOISE = /\b(official|audio|video|visualizer|visualiser|lyrics?|music|hd|hq
 
 function words(value) {
   return new Set(String(value || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
-    .replace(NOISE, ' ').replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean));
+    .replace(NOISE, ' ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter(Boolean));
+}
+
+export function versionConflicts(track, candidate) {
+  const requested = `${track.title || ''} ${track.mix || ''}`;
+  const actual = candidate.title || '';
+  const flags = [
+    ['live', /\b(live|concert)\b/i], ['instrumental', /\binstrumental\b/i],
+    ['acapella', /\ba\s?capella\b/i], ['clean', /\bclean\b/i], ['explicit', /\bexplicit\b/i],
+    ['sped up', /\b(sped[ -]?up|nightcore)\b/i], ['slowed', /\bslowed\b/i],
+    ['cover', /\b(cover|karaoke)\b/i], ['radio edit', /\bradio\s+(edit|mix|version)\b/i], ['extended', /\bextended\b/i]
+  ];
+  return flags.filter(([, pattern]) => pattern.test(requested) !== pattern.test(actual)).map(([name]) => name);
 }
 
 function recall(expected, actual) {
@@ -29,11 +41,12 @@ function candidateSignals(track, candidate) {
   const artist = Math.max(recall(track.artist, candidateArtistText), recall(primary, candidateArtistText) * 0.86);
   const uploader = Math.max(recall(candidate.artist, track.artist), recall(candidate.uploader, track.artist));
   const candidateVersion = parsed?.mix || candidate.title?.match(/\s[-–—]\s+([^–—-]*(?:remix|mix|edit|rework|version|dub|vip|bootleg))$/i)?.[1] || '';
-  const requestedVersion = String(track.mix || '').trim();
+  const requestedVersion = String(track.mix || parseTracklistLine(track.title || '')?.mix || '').trim();
   const version = requestedVersion ? recall(requestedVersion, candidate.title) : 1;
-  const versionCompatible = requestedVersion
-    ? version >= 0.75
-    : !candidateVersion || /\boriginal mix\b|\balbum version\b/i.test(candidateVersion);
+  const conflicts = versionConflicts(track, candidate);
+  const versionCompatible = !conflicts.length && (requestedVersion
+    ? version >= 1
+    : !candidateVersion || /\boriginal mix\b|\balbum version\b/i.test(candidateVersion));
   const durationDelta = track.durationSec > 0 && candidate.durationSec > 0
     ? Math.abs(track.durationSec - candidate.durationSec) : Infinity;
   const duration = durationDelta <= 4 ? 1 : durationDelta <= 10 ? 0.8 : durationDelta <= 20 ? 0.35 : 0;
@@ -42,19 +55,28 @@ function candidateSignals(track, candidate) {
   if (/\b(lyrics?|karaoke)\b/i.test(candidate.title || '')) score -= 0.1;
   if (/\b(cover|sped up|slowed|nightcore)\b/i.test(candidate.title || '')) score -= 0.3;
   if (!versionCompatible) score -= 0.32;
-  return { score: Math.max(0, Math.min(1, Math.round(score * 100) / 100)), title, artist, durationDelta, versionCompatible };
+  return { score: Math.max(0, Math.min(1, Math.round(score * 100) / 100)), title, artist, durationDelta, versionCompatible, conflicts };
 }
 
 export function scoreCandidate(track, candidate) {
   return candidateSignals(track, candidate).score;
 }
 
+export function candidateVersionCompatible(track, candidate) {
+  return candidateSignals(track, candidate).versionCompatible;
+}
+
 export function rankCandidates(track, candidates) {
   const unique = new Map();
   for (const candidate of candidates) {
+    if (track.blockedUrls?.includes(candidate.url)) continue;
     if (track.blockedOriginal && (candidate.url === track.directUrl
       || (track.soundcloudId && candidate.provider === 'SoundCloud' && String(candidate.sourceId) === String(track.soundcloudId)))) continue;
-    if (candidate.url && !unique.has(candidate.url)) unique.set(candidate.url, { ...candidate, score: scoreCandidate(track, candidate) });
+    if (candidate.url && !unique.has(candidate.url)) {
+      const evidence = candidateSignals(track, candidate);
+      unique.set(candidate.url, { ...candidate, score: evidence.score, evidence,
+        reason: evidence.conflicts.length ? `Version differs: ${evidence.conflicts.join(', ')}` : evidence.versionCompatible ? 'Artist, title, version and available duration compared; score is not a probability.' : 'Mix/version needs review.' });
+    }
   }
   const ranked = [...unique.values()].sort((a, b) => b.score - a.score).slice(0, 5);
   const first = ranked[0];

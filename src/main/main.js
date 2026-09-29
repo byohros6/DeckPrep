@@ -1,17 +1,20 @@
-import { app, BrowserWindow, Menu } from 'electron';
+import { app, BrowserWindow, Menu, protocol, net, ipcMain, dialog } from 'electron';
 import path from 'path';
 import fs from 'node:fs';
 import os from 'node:os';
 import http from 'node:http';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { fileURLToPath } from 'url';
-import { registerIpcHandlers } from './ipc.js';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { registerIpcHandlers, shutdownJobs, previewPath } from './ipc.js';
 import { resolveBinary } from './engine/binaryManager.js';
 import { DownloadQueue } from './engine/downloadQueue.js';
+import { pruneReviewCache } from './engine/reviewCache.js';
+import { readSession } from './sessionStore.js';
 import NodeID3 from 'node-id3';
 
 const execFileAsync = promisify(execFile);
+protocol.registerSchemesAsPrivileged([{scheme: 'deckprep-audio', privileges: {standard: true, secure: true, supportFetchAPI: true, stream: true}}]);
 
 async function checkPackagedExport(ffmpeg) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'deckprep-packaged-check-'));
@@ -51,6 +54,21 @@ if (testDataArg) {
 
 let mainWindow = null;
 
+function flushRenderer(window) {
+  return new Promise((resolve, reject) => {
+    const finished = (_, success) => {
+      if (_ && _.sender !== window.webContents) return;
+      clearTimeout(timer); ipcMain.removeListener('renderer-flushed', finished);
+      if (success === false) reject(new Error('The latest selection could not be saved. Please try closing again.'));
+      else resolve();
+    };
+    // A crashed renderer has no unsent state to recover; main still flushes its durable snapshot.
+    const timer = setTimeout(() => finished(null, true), 2000);
+    ipcMain.on('renderer-flushed', finished);
+    window.webContents.send('flush-before-close');
+  });
+}
+
 function createWindow() {
   const isSmokeTest = process.argv.includes('--smoke-test');
   const captureArg = process.argv.find(arg => arg.startsWith('--capture-ui='));
@@ -64,9 +82,9 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 1000,
-    minHeight: 650,
-    show: !isSmokeTest,
+    minWidth: 760,
+    minHeight: 560,
+    show: false,
     backgroundColor: '#0d1117',
     title: 'DeckPrep',
     titleBarStyle: 'hidden',
@@ -75,11 +93,34 @@ function createWindow() {
       preload: path.join(__dirname, '../preload/preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: true
+    }
+  });
+
+  mainWindow.once('ready-to-show', () => {
+    if (!isSmokeTest) {
+      mainWindow.maximize();
+      mainWindow.show();
     }
   });
 
   registerIpcHandlers(mainWindow);
+  mainWindow.webContents.setWindowOpenHandler(() => ({action: 'deny'}));
+  mainWindow.webContents.on('will-navigate', event => event.preventDefault());
+  mainWindow.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  mainWindow.webContents.session.setPermissionCheckHandler(() => false);
+  let closing = false;
+  let closeInFlight = false;
+  mainWindow.on('close', event => {
+    if (closing) return;
+    event.preventDefault();
+    if (closeInFlight) return;
+    closeInFlight = true;
+    (async () => {
+      try { await flushRenderer(mainWindow); await shutdownJobs(); closing = true; mainWindow?.close(); }
+      catch (error) { closeInFlight = false; dialog.showErrorBox('Could not finish saving', error.message); }
+    })();
+  });
   Menu.setApplicationMenu(null);
   mainWindow.setMenuBarVisibility(false);
 
@@ -178,6 +219,7 @@ function createWindow() {
           })()
         `);
 
+        if (!testResults.hasDjAPI || !testResults.hasDestInput || !testResults.hasLinkInput) throw new Error('Renderer did not initialize');
         console.log('SMOKE_TEST_RESULT:', JSON.stringify(testResults));
         app.exit(0);
       } catch (err) {
@@ -200,8 +242,21 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  protocol.handle('deckprep-audio', request => {
+    const url = new URL(request.url);
+    const file = url.hostname === 'track' ? previewPath(url.pathname.slice(1)) : null;
+    if (!file) return new Response('Audio unavailable', {status: 404});
+    return net.fetch(pathToFileURL(file).href, {headers: request.headers});
+  });
   const engineCheckArg = process.argv.find(arg => arg.startsWith('--check-engines='));
-  if (!engineCheckArg) return createWindow();
+  if (!engineCheckArg) {
+    try {
+      const saved = await readSession();
+      const result = await pruneReviewCache(path.join(app.getPath('userData'), 'audio-cache'), saved?.tracks || []);
+      if (result.errors) console.warn(`Review cache cleanup skipped ${result.errors} unsafe or unreadable entries`);
+    } catch (error) { console.warn('Review cache cleanup skipped:', error.message); }
+    return createWindow();
+  }
   const resultPath = engineCheckArg.slice('--check-engines='.length);
   try {
     const ffmpeg = await resolveBinary('ffmpeg');

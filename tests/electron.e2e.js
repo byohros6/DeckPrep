@@ -121,9 +121,18 @@ try {
   assert.equal(manualChoice.success, false);
   assert.match(manualChoice.error, /conflicts with the requested version/);
   await page.screenshot({path: 'dist/qa-match-review-beta10.png'});
+  const restoreDuringClose = page.evaluate(() => window.djAPI.restoreSession()).catch(() => null);
+  const blockedWhileClosing = await page.evaluate(() => window.djAPI.parseInput('Artist - Blocked while restoring'));
+  assert.equal(blockedWhileClosing.success, false);
+  const closed = application.waitForEvent('close', {timeout: 6000});
+  await application.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].close());
+  await closed;
+  await restoreDuringClose;
+  application = null;
+  assert.equal(JSON.parse(await fs.readFile(path.join(root, 'state', 'session.json'), 'utf8')).tracks.length, 31);
   assert.deepEqual(errors, []);
   console.log('Synthetic desktop queue timings:', JSON.stringify(scale));
-  console.log('PASS Electron: local import -> inspection -> preview -> restore -> approved trim -> verified M3U8, originals preserved; restore cancellation/operation exclusion and incompatible match rejection verified in real IPC; sandbox enabled, no renderer errors');
+  console.log('PASS Electron: local import -> inspection -> preview -> restore -> approved trim -> verified M3U8, originals preserved; restore cancellation/operation exclusion, close-during-restore and incompatible match rejection verified; sandbox enabled, no renderer errors');
 } finally {
   await application?.close();
   await fs.rm(root, {recursive: true, force: true});
